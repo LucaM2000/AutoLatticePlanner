@@ -1,0 +1,49 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "auto_lattice_planner"
+version = "0.1.0"
+dependencies = [
+    "numpy",
+    "scipy",
+    "gatetools",
+    "pydicom",
+    "PyQt5",
+    "rt_utils",
+    "scikit-image",
+    "matplotlib",
+    "click",
+]
+requires-python = ">=3.9"
+authors = [
+  {name = "Luca MULCAHY", email = "luca.mulcahy@lyon.unicancer.fr"},
+]
+description = "Tools to create and plan lattice structures automatically for radiotherapy."
+readme = "README.md"
+license = "MIT"
+keywords = [
+  "radiotherapy",
+  "lattice",
+  "planning",
+  "automation",
+]
+classifiers = [
+    "Programming Language :: Python",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Programming Language :: Python :: 3.11",
+    "Programming Language :: Python :: 3.12",
+    "License :: OSI Approved :: MIT License",
+    "Operating System :: OS Independent",
+]
+
+[project.urls]
+Homepage = "https://github.com/LucaM2000/AutoLatticePlanner"
+
+#[project.scripts]
+#spam-cli = "spam:main_cli"
+
+[project.gui-scripts]
+auto-lattice-planner-gui = "auto_lattice_planner.select_image_gui:main"
