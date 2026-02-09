@@ -592,8 +592,7 @@ def main():
     primary_mask = itk.imread("Lattice_target.mhd")
     primary_array = itk.GetArrayFromImage(primary_mask)
 
-    oars_mask = itk.imread("OARs_combined.mhd")
-    oars_combined_array = itk.GetArrayFromImage(oars_mask)
+
 
     spacing = np.array(ct_image.GetSpacing())
 
@@ -608,7 +607,10 @@ def main():
     print("Calculating distance maps...")
 
     if len(selected_oars) != 0:
-
+      
+        oars_mask = itk.imread("OARs_combined.mhd")
+        oars_combined_array = itk.GetArrayFromImage(oars_mask)
+      
         primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
         primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
         primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
@@ -671,4 +673,5 @@ def main():
 
 
 if __name__ == "__main__":
+
     main()
