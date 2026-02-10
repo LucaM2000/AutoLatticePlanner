@@ -621,7 +621,13 @@ def main():
 
         tumour_volume = primary_array & (~oars_combined_array)
         distance_map = distance_transform_edt(tumour_volume)
+      
+        OARs_volume = oars_combined_array
+        OARs_distance_map = distance_transform_edt(OARs_volume)
 
+        np.save("OARs_volume.npy", OARs_volume)
+        np.save("OARs_distance_map.npy", OARs_distance_map
+                
     else:
         primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
         primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
@@ -638,11 +644,7 @@ def main():
 
     # np.save("lattice_geometry.txt", lattice_geometry)
 
-    OARs_volume = oars_combined_array
-    OARs_distance_map = distance_transform_edt(OARs_volume)
-
-    np.save("OARs_volume.npy", OARs_volume)
-    np.save("OARs_distance_map.npy", OARs_distance_map)
+)
 
     print("Distance maps calculated!")
 
@@ -675,3 +677,4 @@ def main():
 if __name__ == "__main__":
 
     main()
+
