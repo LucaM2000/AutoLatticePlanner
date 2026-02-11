@@ -25,7 +25,8 @@ from PyQt5.QtWidgets import (
     QVBoxLayout,
     QWidget,
 )
-from scipy.ndimage import distance_transform_edt
+
+from auto_lattice_planner import lattice_planner_helper
 
 
 def select_CT_folder():
@@ -38,40 +39,6 @@ def select_RTStruct_file():
         None, "Select RTStruct DICOM File", "", "DICOM Files (*.dcm);;All Files (*)"
     )
     return file_path
-
-
-def resample_to_reference(input_image, reference_image, interpolator="nearest"):
-    """
-    Resample input_image to match reference_image geometry (spacing, size, origin, direction)
-    """
-
-    # Set up the resampler
-    ResampleFilterType = itk.ResampleImageFilter[
-        type(input_image), type(reference_image)
-    ]
-    resampler = ResampleFilterType.New()
-
-    resampler.SetInput(input_image)
-    resampler.SetReferenceImage(reference_image)
-    resampler.UseReferenceImageOn()
-
-    # Choose interpolator
-    if interpolator == "nearest":
-        InterpolatorType = itk.NearestNeighborInterpolateImageFunction[
-            type(reference_image), itk.D
-        ]
-        interpolator_obj = InterpolatorType.New()
-    else:
-        InterpolatorType = itk.LinearInterpolateImageFunction[
-            type(reference_image), itk.D
-        ]
-        interpolator_obj = InterpolatorType.New()
-
-    resampler.SetInterpolator(interpolator_obj)
-
-    # Execute the resampling
-    resampler.Update()
-    return resampler.GetOutput()
 
 
 def OAR_mask_merger(masks):
@@ -374,36 +341,6 @@ def main():
         sys.exit(0)
 
     dicom_series_path = os.path.normpath(dicom_series_path)
-    ct_files = glob.glob(os.path.join(dicom_series_path, "*.dcm"))
-
-    print(len(ct_files))
-    # Checking for duplicate slices
-    series_uids = set()
-    z_positions = set()
-
-    for f in ct_files:
-        dcm = pydicom.dcmread(f, stop_before_pixels=True)
-        series_uids.add(dcm.SeriesInstanceUID)
-        z_positions.add(round(float(dcm.ImagePositionPatient[2]), 3))
-
-    print("SeriesInstanceUIDs:", len(series_uids))
-    print("Unique Z positions:", len(z_positions))
-
-    # Removing Duplicates
-
-    # deduped_files = {}
-    # for f in ct_files:
-    #     dcm = pydicom.dcmread(f, stop_before_pixels=True)
-    #     z = round(float(dcm.ImagePositionPatient[2]), 3)
-    #
-    #     # Keep the first slice encountered at each Z
-    #     if z not in deduped_files:
-    #         deduped_files[z] = f
-    #
-    # # Sort by Z
-    # ct_files = [deduped_files[z] for z in sorted(deduped_files.keys())]
-
-    # print("After deduplication:", len(ct_files))
 
     # Step 2: Select RTStruct file
     rtstruct_path = select_RTStruct_file()
@@ -411,15 +348,6 @@ def main():
     if not rtstruct_path:
         print("No RTStruct selected.")
         sys.exit(0)
-
-    data = {
-        "dicom_series_path": dicom_series_path,
-        "rtstruct_path": rtstruct_path,
-        "ct_files": ct_files,
-        "additional_target": False,
-    }
-    with open("paths.json", "w") as f:
-        json.dump(data, f)
 
     # Step 3: Pick primary ROI (main target)
     picker = ROIPicker(rtstruct_path)
@@ -433,21 +361,6 @@ def main():
         print("No primary ROI selected.")
         sys.exit(0)
 
-    primary_roi = picker.selected_roi
-    lattice_geometry = picker.lattice_geometry
-    Tolerance = picker.tolerance_value
-
-    with open("paths.json", "r") as f:
-        data = json.load(f)
-
-    data["lattice_geometry"] = lattice_geometry
-    data["Tolerance"] = Tolerance
-
-    with open("paths.json", "w") as f:
-        json.dump(data, f)
-
-    print(f"Primary ROI selected: {primary_roi}")
-
     # Step 4: Optional - Pick secondary ROI
     picker2 = ROIPicker2(rtstruct_path)
     picker2.setWindowTitle("Select Optional Additional Target ROI")
@@ -457,13 +370,6 @@ def main():
     if picker2.user_cancelled:
         print("No primary ROI selected.")
         sys.exit(0)
-
-    secondary_roi = picker2.selected_roi
-
-    if secondary_roi is not None:
-        print(f"Additional ROI selected: {secondary_roi}")
-    else:
-        print("No additional ROI selected.")
 
     # Step 5: Select OARs to be given additional margin
     picker3 = OARPicker(rtstruct_path)
@@ -475,220 +381,42 @@ def main():
         print("No primary ROI selected.")
         sys.exit(0)
 
+    primary_roi = picker.selected_roi
+    lattice_geometry = picker.lattice_geometry
+    tolerance = picker.tolerance_value
+    print(f"Primary ROI selected: {primary_roi}")
+
+    secondary_roi = picker2.selected_roi
+
+    additional_target = False
+    if secondary_roi is not None:
+        print(f"Additional ROI selected: {secondary_roi}")
+        additional_target = True
+    else:
+        print("No additional ROI selected.")
+
     selected_oars = picker3.selected_oars
     print("OARs to avoid:", selected_oars)
 
-    # Step 5: Process CT and RTStruct
-    print("Reading CT image...")
+    output_folder = "."
 
-    zs = []
-    instances = []
-
-    for f in ct_files:
-        dcm = pydicom.dcmread(f, stop_before_pixels=True)
-        if hasattr(dcm, "ImagePositionPatient"):
-            zs.append(dcm.ImagePositionPatient[2])
-        if hasattr(dcm, "InstanceNumber"):
-            instances.append(dcm.InstanceNumber)
-
-    print("Total DICOM files:", len(ct_files))
-    print("Unique Z positions:", len(set(zs)))
-    print("Min Z step (mm):", np.min(np.diff(sorted(set(zs)))))
-
-    ct_image = gt.read_dicom(ct_files)
-
-    print("Reading RTStruct...")
-
-    structset = pydicom.dcmread(rtstruct_path)
-
-    # Step 6: Create primary ROI mask
-    print("Creating primary ROI mask...")
-
-    primary_aroi = gt.region_of_interest(structset, primary_roi)
-    # primary_mask = primary_aroi.get_mask(ct_image, corrected=False)
-    # itk.imwrite(primary_mask, "Lattice_target.mhd")  # Save for visualization if needed
-
-    # Get the raw mask
-    primary_mask_raw = primary_aroi.get_mask(ct_image, corrected=False)
-
-    # primary_mask_raw = itk.imread("C:\\Users\\MULCAHY\\Documents\\1 RTSTRUCT SS_061025iiMAR-GVTLattice-label.mhd")
-
-    # Ensure mask and CT have matching pixel type (float)
-    mask_cast = itk.cast_image_filter(
-        primary_mask_raw, ttype=(type(primary_mask_raw), itk.Image[itk.F, 3])
+    # Create the lattice data object
+    data = lattice_planner_helper.LatticeData(
+        dicom_series_path=dicom_series_path,
+        rtstruct_path=rtstruct_path,
+        additional_target=additional_target,
+        lattice_geometry=lattice_geometry,
+        tolerance=tolerance,
+        primary_roi=primary_roi,
+        secondary_roi=secondary_roi,
+        selected_oars=selected_oars,
+        output_folder=output_folder,
     )
 
-    # Now resample safely
-    primary_mask_resampled = resample_to_reference(
-        mask_cast, ct_image, interpolator="nearest"
-    )
+    with open("paths.json", "w") as f:
+        json.dump(data.to_json(), f)
 
-    # Convert back to unsigned char (binary)
-    primary_mask = itk.cast_image_filter(
-        primary_mask_resampled,
-        ttype=(type(primary_mask_resampled), itk.Image[itk.UC, 3]),
-    )
-
-    # Save for visualization
-    print("Saving primary target mask...")
-    itk.imwrite(primary_mask, "Lattice_target.mhd")
-    itk.imwrite(primary_mask_raw, "Lattice_raw.mhd")
-    print("Primary mask saved as Lattice_target.mhd")
-
-    # Step 7: If secondary ROI, create secondary mask
-    if secondary_roi is not None:
-        print("Creating secondary ROI mask...")
-        secondary_aroi = gt.region_of_interest(structset, secondary_roi)
-        secondary_mask = secondary_aroi.get_mask(ct_image, corrected=False)
-        itk.imwrite(
-            secondary_mask, "Additional_target.mhd"
-        )  # Save secondary mask separately
-
-        # secondary_mask_raw = secondary_aroi.get_mask(ct_image, corrected=False)
-        # secondary_mask = transform.apply(secondary_mask_raw, reference=ct_image, interpolator='nearest')
-        # itk.imwrite(secondary_mask, "Additional_target.mhd")
-
-        # Optional: convert to NumPy for later use
-        primary_array = itk.GetArrayFromImage(primary_mask)
-        secondary_array = itk.GetArrayFromImage(secondary_mask)
-    else:
-        secondary_mask = None
-        secondary_array = None
-        print("No secondary ROI selected.")
-
-    # itk.imwrite(primary_mask, "Lattice_target.mhd")
-
-    # Creating combined mask of OARs
-    print("Creating combined mask of OARs...")
-    oar_mask_index = 0
-    if len(selected_oars) != 0:
-        oar_masks = []
-        spacing = np.array(ct_image.GetSpacing())
-
-        for oar_name, margin_mm in selected_oars:
-            roi = gt.region_of_interest(structset, oar_name)
-            mask_itk = roi.get_mask(ct_image, corrected=False)
-
-            # Convert to NumPy (binary)
-            mask_np = itk.GetArrayFromImage(mask_itk).astype(bool)
-
-            # Distance transform OUTSIDE the OAR
-            dist = distance_transform_edt(~mask_np, sampling=spacing)
-
-            # Dilate by margin (mm)
-            dilated_mask = dist <= margin_mm
-
-            oar_masks.append(
-                {"name": oar_name, "margin_mm": margin_mm, "mask": dilated_mask}
-            )
-
-        oars_combined = None
-
-        for oar in oar_masks:
-            arr = oar["mask"].astype(bool)
-
-            if oars_combined is None:
-                oars_combined = arr
-            else:
-                oars_combined = np.logical_or(oars_combined, arr)
-
-        oars_combined_mask = itk.GetImageFromArray(oars_combined.astype(np.uint8))
-
-        oars_combined_mask.SetSpacing(ct_image.GetSpacing())
-        oars_combined_mask.SetOrigin(ct_image.GetOrigin())
-        oars_combined_mask.SetDirection(ct_image.GetDirection())
-
-        itk.imwrite(oars_combined_mask, "OARs_combined.mhd")
-
-    else:
-        print("No OARs selected — using empty OAR mask")
-        oars_combined_mask = np.zeros_like(primary_mask_raw, dtype=bool)
-
-    print("OARs combined and saved as OARs_combined.mhd")
-
-    # Step 8: Create distance map
-    primary_mask = itk.imread("Lattice_target.mhd")
-    primary_array = itk.GetArrayFromImage(primary_mask)
-
-    spacing = np.array(ct_image.GetSpacing())
-
-    print("CT shape:", itk.GetArrayFromImage(ct_image).shape)
-    print("CT spacing:", ct_image.GetSpacing())
-
-    print("Primary mask shape:", primary_array.shape)
-    print("Primary mask spacing:", primary_mask.GetSpacing())
-    print("Primary mask origin:", primary_mask.GetOrigin())
-    print("Primary mask direction:\n", primary_mask.GetDirection())
-
-    print("Calculating distance maps...")
-
-    if len(selected_oars) != 0:
-
-        oars_mask = itk.imread("OARs_combined.mhd")
-        oars_combined_array = itk.GetArrayFromImage(oars_mask)
-
-        primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
-        primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
-        primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
-
-        oars_combined_array[:, 0] = (oars_combined_array[:, 0] * spacing[2]).astype(
-            np.uint8
-        )
-        oars_combined_array[:, 1] = (oars_combined_array[:, 1] * spacing[1]).astype(
-            np.uint8
-        )
-        oars_combined_array[:, 2] = (oars_combined_array[:, 2] * spacing[0]).astype(
-            np.uint8
-        )
-
-        tumour_volume = primary_array & (~oars_combined_array)
-        distance_map = distance_transform_edt(tumour_volume)
-
-        OARs_volume = oars_combined_array
-        OARs_distance_map = distance_transform_edt(OARs_volume)
-
-        np.save("OARs_volume.npy", OARs_volume)
-        np.save("OARs_distance_map.npy", OARs_distance_map)
-
-    else:
-        primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
-        primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
-        primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
-
-        tumour_volume = primary_array
-        distance_map = distance_transform_edt(tumour_volume)
-
-    print("reached here")
-
-    np.save("tumour_volume.npy", tumour_volume)
-    np.save("distance_map.npy", distance_map)
-
-    # np.save("lattice_geometry.txt", lattice_geometry)
-
-    print("Distance maps calculated!")
-
-    if secondary_roi is not None:
-        print("Saving secondary mask as Additional_target.mhd")
-        itk.imwrite(secondary_mask, "Additional_target.mhd")
-
-        # Load and convert secondary mask
-        secondary_mask = itk.imread("Additional_target.mhd")
-        secondary_array = itk.GetArrayFromImage(secondary_mask)
-
-        secondary_array[:, 0] = (secondary_array[:, 0] * spacing[2]).astype(np.uint8)
-        secondary_array[:, 1] = (secondary_array[:, 1] * spacing[1]).astype(np.uint8)
-        secondary_array[:, 2] = (secondary_array[:, 2] * spacing[0]).astype(np.uint8)
-
-        additional_target_volume = secondary_array
-
-        np.save("additional_target_volume.npy", additional_target_volume)
-
-        data["additional_target"] = True
-
-        print("Additional target volume saved!")
-
-    else:
-        print("No secondary ROI selected.")
+    lattice_planner_helper.compute_volumes(data)
 
 
 if __name__ == "__main__":
