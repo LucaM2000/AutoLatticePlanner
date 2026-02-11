@@ -414,7 +414,7 @@ def main():
     )
 
     with open("paths.json", "w") as f:
-        json.dump(data.to_json(), f)
+        json.dump(data.to_json(), f, indent=4)
 
     lattice_planner_helper.compute_volumes(data)
 

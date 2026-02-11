@@ -42,8 +42,8 @@ classifiers = [
 [project.urls]
 Homepage = "https://github.com/LucaM2000/AutoLatticePlanner"
 
-#[project.scripts]
-#spam-cli = "spam:main_cli"
+[project.scripts]
+auto-lattice-planner-cli = "auto_lattice_planner.select_image_cli:main"
 
 [project.gui-scripts]
 auto-lattice-planner-gui = "auto_lattice_planner.select_image_gui:main"
