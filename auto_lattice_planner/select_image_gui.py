@@ -1,11 +1,7 @@
-import glob
 import json
 import os
 import sys
 
-import gatetools as gt
-import itk
-import numpy as np
 import pydicom
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
