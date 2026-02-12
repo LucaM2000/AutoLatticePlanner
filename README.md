@@ -1,3 +1,3 @@
-select_image_gui.py  
+auto-lattice-planner-gui
 lattice-grid-taget
-rtstruct_conversion_gui.py
+rtstruct-conversion-gui

@@ -48,4 +48,4 @@ lattice-grid-target = "auto_lattice_planner.lattice_grid_target_cli:main"
 
 [project.gui-scripts]
 auto-lattice-planner-gui = "auto_lattice_planner.select_image_gui:main"
-rtstruct_conversion_gui = "auto_lattice_planner.rtstruct_conversion_gui:main"
+rtstruct-conversion-gui = "auto_lattice_planner.rtstruct_conversion_gui:main"
