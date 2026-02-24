@@ -1,3 +1,3 @@
 auto-lattice-planner-gui  
-lattice-grid-target
+lattice-grid-target  
 rtstruct-conversion-gui  
