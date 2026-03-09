@@ -1,4 +1,5 @@
 import gatetools as gt
+from pathlib import Path
 import glob
 import os
 import itk
@@ -323,11 +324,11 @@ def main():
 
     print("Grid generated!")
 
-    mask = itk.imread("Lattice_target.mhd")
-    target_mask = itk.imread("Additional_target.mhd")
-    mask_spacing = np.array(mask.GetSpacing()) # x y z in mm
-    mask_numpy_array = itk.GetArrayFromImage(mask) #the coordinate system is [z, y, x]
-    spacing = mask_spacing
+    # mask = itk.imread("Lattice_target.mhd")
+    # target_mask = itk.imread("Additional_target.mhd")
+    # mask_spacing = np.array(mask.GetSpacing()) # x y z in mm
+    # mask_numpy_array = itk.GetArrayFromImage(mask) #the coordinate system is [z, y, x]
+    # spacing = mask_spacing
 
 
 
@@ -471,3 +472,4 @@ def main():
 
 if __name__ == "__main__":
     main()
+
