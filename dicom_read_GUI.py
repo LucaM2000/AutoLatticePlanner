@@ -65,7 +65,7 @@ class ROIPicker(QWidget):
         self.setWindowTitle("Select Lattice Settings")
         self.resize(400, 600)
 
-        self.selected_roi = None
+        self.selected_roi = []
         self.lattice_geometry = "Normal (Duriseti)"  # default
 
         self.rtstruct = pydicom.dcmread(rtstruct_path)
@@ -109,11 +109,11 @@ class ROIPicker(QWidget):
 
         self.slider_value_changed(self.slider.value())
 
-
         # --- ROI list ---
         self.label = QLabel("Select ROI from the list:")
         self.list_widget = QListWidget()
         self.list_widget.addItems(self.roi_names)
+        self.list_widget.setSelectionMode(QListWidget.MultiSelection)
 
         # --- Buttons ---
         self.confirm_button = QPushButton("Confirm Selection")
@@ -145,9 +145,9 @@ class ROIPicker(QWidget):
 
     def slider_value_changed(self, value):
         scale = 10
-        self.slider_label_2.setText("{}".format(value/scale))
+        self.slider_label_2.setText("{}".format(value / scale))
 
-        self.tolerance_value = value/scale
+        self.tolerance_value = value / scale
 
     def confirm_selection(self):
         selected_items = self.list_widget.selectedItems()
@@ -155,11 +155,11 @@ class ROIPicker(QWidget):
             QMessageBox.warning(self, "No Selection", "Please select an ROI.")
             return
 
-        self.selected_roi = selected_items[0].text()
+        self.selected_roi = [item.text() for item in selected_items]
         self.close()
 
     def cancel_selection(self):
-        self.selected_roi = None
+        self.selected_roi = []
         self.user_cancelled = True
         self.close()
 
@@ -234,11 +234,10 @@ class OARRowWidget(QWidget):
     def __init__(self, roi_name):
         super().__init__()
 
-
         self.checkbox = QCheckBox(roi_name)
 
         self.margin_box = QComboBox()
-        self.margin_box.addItems(["10", "15"])
+        self.margin_box.addItems(["5", "10", "15"])
         self.margin_box.setEnabled(False)
 
         layout = QHBoxLayout()
@@ -262,7 +261,6 @@ class OARRowWidget(QWidget):
 
     def margin(self):
         return float(self.margin_box.currentText())
-
 
 
 class OARPicker(QWidget):
@@ -342,7 +340,6 @@ class OARPicker(QWidget):
             # Closed programmatically via self.close()
             print("Window closed programmatically")
         event.accept()
-
 
 
 
@@ -697,4 +694,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
