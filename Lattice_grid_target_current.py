@@ -330,120 +330,121 @@ def main():
     spacing = mask_spacing
 
 
-    tumour_volume = np.load("tumour_volume.npy") # in physical space
-    distance_map = np.load("distance_map.npy")   # ^^^^^^^^^^^^^^
+
 
     if additional_target is True:
         target_volume = np.load("additional_target_volume.npy")
     else:
         target_volume = None
 
+    # Running optimizer for separate GTVs
+    mask_folder = Path("Masks")
+
+    mask_files = sorted(mask_folder.glob("Lattice_target_*.mhd"))
+
+    spheres_inside_array = []
+
+    for mask_file in mask_files:
+        roi_id = mask_file.stem.replace("Lattice_target_", "")
+
+        distance_file = mask_folder / f"distance_map_{roi_id}.npy"
+        volume_file = mask_folder / f"tumour_volume_{roi_id}.npy"
+
+        mask = itk.imread(str(mask_file))
+        distance_map = np.load(distance_file)
+        tumour_volume = np.load(volume_file)
 
 
 
-
-    verts, faces, normals, values = measure.marching_cubes(tumour_volume, level=0)
-
-
-
-    centroid_x = np.mean(verts[:, 0])
-    centroid_y = np.mean(verts[:, 1])
-    centroid_z = np.mean(verts[:, 2])
-
-    centroid = (centroid_x, centroid_y, centroid_z)
-
-    centred_points = grid_points1[:, :3] + centroid
-
-    colors = grid_points1[:, 3].reshape(-1, 1)
-    centred_grid = np.hstack([centred_points, colors])
-
-    print("Rotating grid...")
-
-    # # Call the optimize_grid_orientation function and get the results
-    (best_orientation,
-     best_fitness_rotation,
-     best_inside_rotation,
-     best_inside_target_rotation,
-     best_tumor_score_rotation,
-     best_target_score_rotation) = optimize_grid_orientation(centred_grid, distance_map, target_volume,  sph_radius, centroid, spacing)
-
-    # Now use the best_orientation to rotate the grid
-    # optimized_grid_points = rotate_grid(centred_grid, best_orientation, centroid)
-
-    print('Spheres inside based on rotation:', len(best_inside_rotation))
-    print('Spheres covering target based on rotation:', len(best_inside_target_rotation))
+        verts, faces, normals, values = measure.marching_cubes(tumour_volume, level=0)
 
 
 
-    print('Translating & rotating grid...')
+        centroid_x = np.mean(verts[:, 0])
+        centroid_y = np.mean(verts[:, 1])
+        centroid_z = np.mean(verts[:, 2])
 
-    (best_orientation,
-    best_translation,
-    best_fitness_rotation_translation,
-    best_inside_tumour_RT,
-    best_inside_targets_RT,
-    best_angles_RT,
-    best_tumor_score_RT,
-    best_target_score_RT) = optimize_grid_orientation_and_translation(
-        centred_grid, tumor_center=centroid, distance_map=distance_map, sphere_radius=sph_radius, spacing=spacing, target_mask = target_volume,
-        translation_range=70, translation_step=2, num_rotations=5000)
+        centroid = (centroid_x, centroid_y, centroid_z)
 
-    print('Spheres inside based on rotation & translation:', len(best_inside_tumour_RT))
-    print('Spheres target coverage based on rotation & translation:', len(best_inside_targets_RT))
+        centred_points = grid_points1[:, :3] + centroid
 
-    if  (best_fitness_rotation) > (best_fitness_rotation_translation):
-        spheres_inside = np.array(best_inside_rotation)
-        chosen_method = "Rotation"
-    else:
-        spheres_inside = np.array(best_inside_tumour_RT)
-        chosen_method = "Rotation + Translation"
+        colors = grid_points1[:, 3].reshape(-1, 1)
+        centred_grid = np.hstack([centred_points, colors])
 
-    # if  len(best_inside_rotation) > len(best_inside_tumour_RT):
-    #     spheres_inside = np.array(best_inside_rotation)
-    #     chosen_method = "Rotation"
-    # else:
-    #     spheres_inside = np.array(best_inside_tumour_RT)
-    #     chosen_method = "Rotation + Translation"
+        print("Rotating grid...")
 
-    print("Grid optimised!", f"Chosen method: {chosen_method}")
+        # # Call the optimize_grid_orientation function and get the results
+        (best_orientation,
+         best_fitness_rotation,
+         best_inside_rotation,
+         best_inside_target_rotation,
+         best_tumor_score_rotation,
+         best_target_score_rotation) = optimize_grid_orientation(centred_grid, distance_map, target_volume,  sph_radius, centroid, spacing)
 
-    if best_fitness_rotation > best_fitness_rotation_translation:
-        best_fitness = len(best_inside_rotation)
-        print("Number of spheres inside (rotation only):", best_fitness)
+        # Now use the best_orientation to rotate the grid
+        # optimized_grid_points = rotate_grid(centred_grid, best_orientation, centroid)
 
-    else:
-        best_fitness = len(best_inside_tumour_RT)
-        print("Number of spheres inside (translation & rotation):", best_fitness)
+        print('Spheres inside based on rotation:', len(best_inside_rotation))
+        print('Spheres covering target based on rotation:', len(best_inside_target_rotation))
+
+
+
+        print('Translating & rotating grid...')
+
+        (best_orientation,
+        best_translation,
+        best_fitness_rotation_translation,
+        best_inside_tumour_RT,
+        best_inside_targets_RT,
+        best_angles_RT,
+        best_tumor_score_RT,
+        best_target_score_RT) = optimize_grid_orientation_and_translation(
+            centred_grid, tumor_center=centroid, distance_map=distance_map, sphere_radius=sph_radius, spacing=spacing, target_mask = target_volume,
+            translation_range=70, translation_step=2, num_rotations=5000)
+
+        print('Spheres inside based on rotation & translation:', len(best_inside_tumour_RT))
+        print('Spheres target coverage based on rotation & translation:', len(best_inside_targets_RT))
+
+        if  (best_fitness_rotation) > (best_fitness_rotation_translation):
+            spheres_inside = np.array(best_inside_rotation)
+            spheres_inside_array.append(spheres_inside)
+            chosen_method = "Rotation"
+        else:
+            spheres_inside = np.array(best_inside_tumour_RT)
+            spheres_inside_array.append(spheres_inside)
+            chosen_method = "Rotation + Translation"
+
+        # if  len(best_inside_rotation) > len(best_inside_tumour_RT):
+        #     spheres_inside = np.array(best_inside_rotation)
+        #     chosen_method = "Rotation"
+        # else:
+        #     spheres_inside = np.array(best_inside_tumour_RT)
+        #     chosen_method = "Rotation + Translation"
+
+        print("Grid optimised!", f"Chosen method: {chosen_method}")
+
+        if best_fitness_rotation > best_fitness_rotation_translation:
+            best_fitness = len(best_inside_rotation)
+            print("Number of spheres inside (rotation only):", best_fitness)
+
+        else:
+            best_fitness = len(best_inside_tumour_RT)
+            print("Number of spheres inside (translation & rotation):", best_fitness)
 
 
     mask_array_1 = np.zeros(ct_shape, dtype=np.uint8)
     mask_array_2 = np.zeros(ct_shape, dtype=np.uint8)
 
-    total = len(spheres_inside)
-
-
-    def save_individual_sphere_masks(spheres, radius, spacing, origin, direction, mask_shape, prefix="Sphere"):
-
-        for i, (x, y, z) in enumerate(spheres, start=1):
-
-            mask = np.zeros(mask_shape, dtype=np.uint8)
-            center_mm = np.array([float(x), float(y), float(z)])
-            draw_sphere_mask(mask, center_mm, radius, spacing)
-
-            filename = f"{prefix}_{i}.mhd"
-
-            save_mask_as_mhd(mask, filename, spacing, origin, direction)
-
-            print(f"Saved {filename}")
-
+    spheres_inside_array = np.vstack(spheres_inside_array)
+    print(len(spheres_inside_array))
 
     print("Drawing spheres in mask...")
 
-    for i, (x, y, z) in enumerate(spheres_inside):
+    for i, (x, y, z) in enumerate(spheres_inside_array):
         center_mm = np.array([float(x), float(y), float(z)])
         draw_sphere_mask(mask_array_1, center_mm, sph_radius, mask_spacing)
 
-    for i, (x, y, z) in enumerate(spheres_inside):
+    for i, (x, y, z) in enumerate(spheres_inside_array):
         center_mm = np.array([float(x), float(y), float(z)])
         draw_sphere_mask(mask_array_2, center_mm, sph_radius + 5, mask_spacing)
 
@@ -460,7 +461,7 @@ def main():
     save_mask_as_mhd(mask_array_1, "all_spheres_original_1.mhd", spacing, origin, direction)
     save_mask_as_mhd(mask_array_2, "all_spheres_expanded_1.mhd", spacing, origin, direction)
 
-    np.savetxt("spheres_inside.txt", spheres_inside)
+    np.savetxt("spheres_inside.txt", spheres_inside_array)
 
 
     print("Masks saved!")
