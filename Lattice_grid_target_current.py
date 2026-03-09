@@ -443,11 +443,11 @@ def main():
 
     for i, (x, y, z) in enumerate(spheres_inside_array):
         center_mm = np.array([float(x), float(y), float(z)])
-        draw_sphere_mask(mask_array_1, center_mm, sph_radius, mask_spacing)
+        draw_sphere_mask(mask_array_1, center_mm, sph_radius, spacing)
 
     for i, (x, y, z) in enumerate(spheres_inside_array):
         center_mm = np.array([float(x), float(y), float(z)])
-        draw_sphere_mask(mask_array_2, center_mm, sph_radius + 5, mask_spacing)
+        draw_sphere_mask(mask_array_2, center_mm, sph_radius + 5, spacing)
 
 
 
@@ -472,4 +472,5 @@ def main():
 
 if __name__ == "__main__":
     main()
+
 
