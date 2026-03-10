@@ -173,38 +173,46 @@ def compute_volumes(data):
     structset = pydicom.dcmread(rtstruct_path)
 
     # Step 6: Create primary ROI mask
-    print("Creating primary ROI mask...")
+    print("Creating primary ROI masks...")
 
-    primary_aroi = gt.region_of_interest(structset, primary_roi)
-    # primary_mask = primary_aroi.get_mask(ct_image, corrected=False)
-    # itk.imwrite(primary_mask, "Lattice_target.mhd")  # Save for visualization if needed
+    # Define folder path
+    mask_folder = Path("Masks")  
 
-    # Get the raw mask
-    primary_mask_raw = primary_aroi.get_mask(ct_image, corrected=False)
+    # Create folder if it doesn't exist
+    mask_folder.mkdir(parents=True, exist_ok=True)
 
-    # primary_mask_raw = itk.imread("C:\\Users\\MULCAHY\\Documents\\1 RTSTRUCT SS_061025iiMAR-GVTLattice-label.mhd")
+    primary_masks = []
 
-    # Ensure mask and CT have matching pixel type (float)
-    mask_cast = itk.cast_image_filter(
-        primary_mask_raw, ttype=(type(primary_mask_raw), itk.Image[itk.F, 3])
-    )
+    for roi_name in primary_roi:
+        primary_aroi = gt.region_of_interest(structset, roi_name)
 
-    # Now resample safely
-    primary_mask_resampled = resample_to_reference(
-        mask_cast, ct_image, interpolator="nearest"
-    )
+        # Get raw mask
+        primary_mask_raw = primary_aroi.get_mask(ct_image, corrected=False)
 
-    # Convert back to unsigned char (binary)
-    primary_mask = itk.cast_image_filter(
-        primary_mask_resampled,
-        ttype=(type(primary_mask_resampled), itk.Image[itk.UC, 3]),
-    )
+        # Cast to float
+        mask_cast = itk.cast_image_filter(primary_mask_raw, ttype=(type(primary_mask_raw), itk.Image[itk.F, 3]))
 
-    # Save for visualization
-    print("Saving primary target mask...")
-    itk.imwrite(primary_mask, output_folder / "Lattice_target.mhd")
-    itk.imwrite(primary_mask_raw, output_folder / "Lattice_raw.mhd")
-    print("Primary mask saved as Lattice_target.mhd")
+        # Resample to CT
+        primary_mask_resampled = resample_to_reference(
+            mask_cast, ct_image, interpolator='nearest')
+
+        # Convert back to binary
+        primary_mask = itk.cast_image_filter(primary_mask_resampled,
+                                             ttype=(type(primary_mask_resampled), itk.Image[itk.UC, 3]))
+
+        # Save each mask individually in a list
+        primary_masks.append({"name": roi_name, "mask": primary_mask})
+
+    for entry in primary_masks:
+        roi_name = entry["name"]
+        mask = entry["mask"]
+
+        # Make a safe filename (replace spaces or special chars)
+        safe_name = roi_name.replace(" ", "_").replace("/", "_")
+        filename = mask_folder / f"Lattice_target_{safe_name}.mhd"
+
+        itk.imwrite(mask, str(filename))  # str() converts Path to string for ITK
+        print(f"Saved mask for ROI {roi_name} -> {filename}")
 
     # Step 7: If secondary ROI, create secondary mask
     primary_array = itk.GetArrayFromImage(primary_mask)
@@ -275,59 +283,54 @@ def compute_volumes(data):
     print("OARs combined and saved as OARs_combined.mhd")
 
     # Step 8: Create distance map
-    spacing = np.array(ct_image.GetSpacing())
+    for entry in primary_masks:
+        current_mask = entry["mask"]
+        roi = entry["name"]
+        primary_array = itk.GetArrayFromImage(current_mask)
 
-    print("CT shape:", itk.GetArrayFromImage(ct_image).shape)
-    print("CT spacing:", ct_image.GetSpacing())
+        spacing = np.array(ct_image.GetSpacing())
 
-    print("Primary mask shape:", primary_array.shape)
-    print("Primary mask spacing:", primary_mask.GetSpacing())
-    print("Primary mask origin:", primary_mask.GetOrigin())
-    print("Primary mask direction:\n", primary_mask.GetDirection())
+        safe_name = roi.replace(" ", "_").replace("/", "_")
+        tumour_filename = mask_folder / f"tumour_volume_{safe_name}.npy"
+        distance_map_filename = mask_folder / f"distance_map_{safe_name}.npy"
 
-    print("Calculating distance maps...")
+        print("Calculating distance maps...")
 
-    if len(selected_oars) != 0:
+        if len(selected_oars) != 0:
+            oars_mask = itk.imread("OARs_combined.mhd")
+            oars_combined_array = itk.GetArrayFromImage(oars_mask)
 
-        oars_combined_array = itk.GetArrayFromImage(oars_combined_mask)
+            primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
+            primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
+            primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
 
-        primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
-        primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
-        primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
+            oars_combined_array[:, 0] = (oars_combined_array[:, 0] * spacing[2]).astype(np.uint8)
+            oars_combined_array[:, 1] = (oars_combined_array[:, 1] * spacing[1]).astype(np.uint8)
+            oars_combined_array[:, 2] = (oars_combined_array[:, 2] * spacing[0]).astype(np.uint8)
 
-        oars_combined_array[:, 0] = (oars_combined_array[:, 0] * spacing[2]).astype(
-            np.uint8
-        )
-        oars_combined_array[:, 1] = (oars_combined_array[:, 1] * spacing[1]).astype(
-            np.uint8
-        )
-        oars_combined_array[:, 2] = (oars_combined_array[:, 2] * spacing[0]).astype(
-            np.uint8
-        )
+            tumour_volume = primary_array & (~oars_combined_array)
+            distance_map = distance_transform_edt(tumour_volume)
 
-        tumour_volume = primary_array & (~oars_combined_array)
-        distance_map = distance_transform_edt(tumour_volume)
+            OARs_volume = oars_combined_array
+            OARs_distance_map = distance_transform_edt(OARs_volume)
 
-        OARs_volume = oars_combined_array
-        OARs_distance_map = distance_transform_edt(OARs_volume)
+            np.save("OARs_volume.npy", OARs_volume)
+            np.save("OARs_distance_map.npy", OARs_distance_map)
 
-        np.save("OARs_volume.npy", OARs_volume)
-        np.save("OARs_distance_map.npy", OARs_distance_map)
+        else:
+            primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
+            primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
+            primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
 
-    else:
-        primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
-        primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
-        primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
-
-        tumour_volume = primary_array
-        distance_map = distance_transform_edt(tumour_volume)
-
-    print("reached here")
-
-    np.save(output_folder / "tumour_volume.npy", tumour_volume)
-    np.save(output_folder / "distance_map.npy", distance_map)
-
-    # np.save("lattice_geometry.txt", lattice_geometry)
+            tumour_volume = primary_array
+            distance_map = distance_transform_edt(tumour_volume)
+    
+        print("reached here")
+    
+        np.save(output_folder / str(tumour_filename), tumour_volume)
+        np.save(output_folder / str(distance_map_filename), distance_map)
+    
+        # np.save("lattice_geometry.txt", lattice_geometry)
 
     print("Distance maps calculated!")
 
