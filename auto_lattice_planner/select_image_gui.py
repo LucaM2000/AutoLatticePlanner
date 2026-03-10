@@ -52,7 +52,7 @@ class ROIPicker(QWidget):
         self.setWindowTitle("Select Lattice Settings")
         self.resize(400, 600)
 
-        self.selected_roi = None
+        self.selected_roi = []
         self.lattice_geometry = "Normal (Duriseti)"  # default
 
         self.rtstruct = pydicom.dcmread(rtstruct_path)
@@ -88,9 +88,7 @@ class ROIPicker(QWidget):
         self.slider.valueChanged.connect(self.slider_value_changed)
 
         slider_layout = QVBoxLayout()
-        slider_layout.addWidget(
-            QLabel("Set tolerance (1.0 = full sphere inside volume, 0.1 = 10% inside)")
-        )
+        slider_layout.addWidget(QLabel("Set tolerance (1.0 = full sphere inside volume, 0.1 = 10% inside)"))
         slider_layout.addWidget(self.slider_label)
         slider_layout.addWidget(self.slider)
 
@@ -102,6 +100,7 @@ class ROIPicker(QWidget):
         self.label = QLabel("Select ROI from the list:")
         self.list_widget = QListWidget()
         self.list_widget.addItems(self.roi_names)
+        self.list_widget.setSelectionMode(QListWidget.MultiSelection)
 
         # --- Buttons ---
         self.confirm_button = QPushButton("Confirm Selection")
@@ -143,11 +142,11 @@ class ROIPicker(QWidget):
             QMessageBox.warning(self, "No Selection", "Please select an ROI.")
             return
 
-        self.selected_roi = selected_items[0].text()
+        self.selected_roi = [item.text() for item in selected_items]
         self.close()
 
     def cancel_selection(self):
-        self.selected_roi = None
+        self.selected_roi = []
         self.user_cancelled = True
         self.close()
 
@@ -225,7 +224,7 @@ class OARRowWidget(QWidget):
         self.checkbox = QCheckBox(roi_name)
 
         self.margin_box = QComboBox()
-        self.margin_box.addItems(["10", "15"])
+        self.margin_box.addItems(["5", "10", "15"])
         self.margin_box.setEnabled(False)
 
         layout = QHBoxLayout()
@@ -305,7 +304,11 @@ class OARPicker(QWidget):
                 selected.append((row.roi_name(), row.margin()))
 
         if not selected:
-            QMessageBox.warning(self, "No Selection", "Please select at least one OAR.")
+            QMessageBox.warning(
+                self,
+                "No Selection",
+                "Please select at least one OAR."
+            )
             return
 
         self.selected_oars = selected
