@@ -50,3 +50,4 @@ rtstruct-conversion-cli = "auto_lattice_planner.rtstruct_conversion_cli:main"
 [project.gui-scripts]
 auto-lattice-planner-gui = "auto_lattice_planner.select_image_gui:main"
 rtstruct-conversion-gui = "auto_lattice_planner.rtstruct_conversion_gui:main"
+run-auto-lattice-planner-gui = "auto_lattice_planner.run_auto_lattice_planner_gui:main"
