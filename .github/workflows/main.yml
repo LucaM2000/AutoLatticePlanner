@@ -44,9 +44,53 @@ jobs:
       with:
         name: wheel_autolatticeplanner
         path: dist/
-#    - name: Publish distribution to PyPI
-#      if: startsWith(github.ref, 'refs/tags')
-#      uses: pypa/gh-action-pypi-publish@master
-#      with:
-#        password: ${{ secrets.PYPI_API_TOKEN }}
-#        skip_existing: true
+
+  test_wheel:
+    runs-on: ubuntu-latest
+    needs: [build]
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: [3.12]
+    steps:
+    - name: Set up Python ${{ matrix.python-version }}
+      uses: actions/setup-python@v6
+      with:
+        python-version: ${{ matrix.python-version }}
+        architecture: 'x64'
+    - uses: actions/download-artifact@v8
+      with:
+        pattern: dist*
+        merge-multiple: true
+        path: dist/
+    - name: Run tests
+      run: |
+          cd dist
+          pip install auto_lattice*.whl
+          wget http://creatis.insa-lyon.fr/~baudier/test_data_lattice_planner.zip
+          unzip test_data_lattice_planner.zip
+          rm test_data_lattice_planner.zip
+          auto-lattice-planner-cli -d test_data/ct/ -s test_data/rtstruct/2.16.840.1.114362.1.12289667.27500105949.700004238.985.109.dcm -l "Normal (Duriseti)" -p "gtv"
+          lattice-grid-target
+          rtstruct-conversion-cli -s new_rtstruct.dcm
+          expeted="b7e1f94a5608fe2ff8b10b2507032e1f50ea82e1"
+          sha_new_file=$(sha1sum "new_rtstruct.dcm" | awk '{print $1}')
+          if [[ "$sha_new_file" == "$expected" ]]; then
+              exit 0
+          else
+              exit -1
+          fi
+
+
+
+
+  publish_wheel:
+    runs-on: ubuntu-latest
+    needs: [build, test_wheel]
+    steps:
+    - name: Publish distribution to PyPI
+      if: startsWith(github.ref, 'refs/tags')
+      uses: pypa/gh-action-pypi-publish@master
+      with:
+        password: ${{ secrets.PYPI_API_TOKEN }}
+        skip_existing: true
