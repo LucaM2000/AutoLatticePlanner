@@ -101,9 +101,9 @@ def main(
         additional_target=additional_target,
         lattice_geometry=lattice_geometry,
         tolerance=tolerance,
-        primary_roi=primary_roi,
+        primary_roi=[primary_roi],
         secondary_roi=secondary_roi,
-        selected_oars=selected_oars,
+        selected_oars=[selected_oars] if selected_oars is not None else [],
         output_folder=output_folder,
     )
 

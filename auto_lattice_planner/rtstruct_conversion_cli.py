@@ -15,7 +15,7 @@ CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
 @click.option(
     "--rtstruct_path",
     "-s",
-    help="RTStruct serie pathname",
+    help="New RTStruct serie pathname",
     required=True,
     type=click.Path(dir_okay=False),
 )
