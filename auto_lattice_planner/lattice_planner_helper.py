@@ -181,6 +181,17 @@ def compute_volumes(data):
     # Create folder if it doesn't exist
     mask_folder.mkdir(parents=True, exist_ok=True)
 
+    # Empty folder
+    for filename in os.listdir(mask_folder):
+        file_path = os.path.join(mask_folder, filename)
+        try:
+            if os.path.isfile(file_path) or os.path.islink(file_path):
+                os.unlink(file_path)  # delete file or symlink
+            elif os.path.isdir(file_path):
+                shutil.rmtree(file_path)  # delete subfolder
+        except Exception as e:
+            print(f"Failed to delete {file_path}: {e}")
+
     primary_masks = []
 
     for roi_name in primary_roi:
