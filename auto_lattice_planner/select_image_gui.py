@@ -92,7 +92,7 @@ class ROIPicker(QWidget):
         slider_layout.addWidget(self.slider_label)
         slider_layout.addWidget(self.slider)
 
-        self.slider_label_2 = QLabel("1")  # or whatever default
+        self.slider_label_2 = QLabel("1")  
 
         self.slider_value_changed(self.slider.value())
 
@@ -353,8 +353,7 @@ def main():
     picker.show()
     app.exec_()
 
-    # while picker.isVisible():
-    #     app.processEvents()  # <-- process Qt events manually
+
 
     if picker.user_cancelled:
         print("No primary ROI selected.")
