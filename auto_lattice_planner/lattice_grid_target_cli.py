@@ -2,7 +2,7 @@ import glob
 import json
 import os
 from pathlib import Path
-
+from alive_progress import alive_bar; import time
 import click
 import gatetools as gt
 import itk
@@ -148,139 +148,182 @@ def compute_lattice_grid_target(output):
         best_tumor_score = 0
         best_target_score = 0
 
-        for _ in range(100000):
-            rotation = R.random()
-            rotation_matrix = rotation.as_matrix()
+        with alive_bar(100000, force_tty=True, dual_line=True) as bar:
+            for _ in range(100000):
+                rotation = R.random()
+                rotation_matrix = rotation.as_matrix()
 
-            physical_grid = grid_points[:, :3]
-            rotated_grid_points = rotate_grid(
-                physical_grid, rotation_matrix, tumor_center
-            )
-            positions = rotated_grid_points[:, :3] / spacing[::-1]
-
-            # Always check coverage inside tumor
-            tumor_mask = batch_check_spheres_inside(
-                positions, sphere_radius, distance_map, tolerance=tolerance
-            )
-            tumor_score = np.count_nonzero(tumor_mask)
-
-            # Check coverage inside additional target if provided
-            if target_mask is not None:
-                target_mask_check = batch_check_spheres_inside(
-                    positions, sphere_radius, target_mask, tolerance=0.01
+                physical_grid = grid_points[:, :3]
+                rotated_grid_points = rotate_grid(
+                    physical_grid, rotation_matrix, tumor_center
                 )
-                target_score = np.count_nonzero(target_mask_check)
-                fitness = tumor_score + target_weight * target_score
-            else:
-                target_mask_check = np.zeros_like(tumor_mask, dtype=bool)
-                target_score = 0
-                fitness = tumor_score  # no weighting needed
+                positions = rotated_grid_points[:, :3] / spacing[::-1]
 
-            if fitness > best_fitness:
-                best_fitness = fitness
-                best_orientation = rotation_matrix
-                best_inside_tumour = positions[tumor_mask]
-                best_inside_targets = positions[target_mask_check]
-                best_tumor_score = tumor_score
-                best_target_score = target_score
+                # Always check coverage inside tumor
+                tumor_mask = batch_check_spheres_inside(
+                    positions, sphere_radius, distance_map, tolerance=tolerance
+                )
+                tumor_score = np.count_nonzero(tumor_mask)
 
-        return (
-            best_orientation,
-            best_fitness,
-            best_inside_tumour,
-            best_inside_targets,
-            best_tumor_score,
-            best_target_score,
-        )
+                # Check coverage inside additional target if provided
+                if target_mask is not None:
+                    target_mask_check = batch_check_spheres_inside(
+                        positions, sphere_radius, target_mask, tolerance=0.01
+                    )
+                    target_score = np.count_nonzero(target_mask_check)
+                    fitness = tumor_score + target_weight * target_score
+                else:
+                    target_mask_check = np.zeros_like(tumor_mask, dtype=bool)
+                    target_score = 0
+                    fitness = tumor_score  # no weighting needed
+
+                if fitness > best_fitness:
+                    best_fitness = fitness
+                    best_orientation = rotation_matrix
+                    best_inside_tumour = positions[tumor_mask]
+                    best_inside_targets = positions[target_mask_check]
+                    best_tumor_score = tumor_score
+                    best_target_score = target_score
+
+                bar()
+
+            return (
+                best_orientation,
+                best_fitness,
+                best_inside_tumour,
+                best_inside_targets,
+                best_tumor_score,
+                best_target_score,
+            )
 
     def optimize_grid_orientation_and_translation(
-        grid_points,
-        tumor_center,
-        distance_map,
-        sphere_radius,
-        spacing,
-        target_mask=None,
-        target_weight=100.0,
-        translation_range=10,
-        translation_step=1,
-        num_rotations=1000,
+            grid_points,
+            tumor_center,
+            distance_map,
+            sphere_radius,
+            spacing,
+            target_mask=None,
+            target_weight=1,
+            translation_range=40,
+            translation_step=2,
+            num_rotations=300,  # now STRUCTURED, not random
     ):
 
         best_orientation = None
         best_translation = None
-        best_fitness = 0
-        best_inside_tumour = []
-        best_inside_targets = []
-        best_angles = []
+        best_fitness = -np.inf
+        best_inside_tumour = None
+        best_inside_targets = None
+        best_angles = None
         best_tumor_score = 0
         best_target_score = 0
 
         translation_offsets = np.arange(
-            -translation_range, translation_range + translation_step, translation_step
+            -translation_range,
+            translation_range + translation_step,
+            translation_step
         )
 
-        for _ in range(num_rotations):
-            physical_grid = grid_points[:, :3]
 
-            rotation = R.random()
-            rotation_matrix = rotation.as_matrix()
-            rotated_grid_points = rotate_grid(
-                physical_grid, rotation_matrix, tumor_center
-            )
-            current_grid = rotated_grid_points[:, :3]
-            current_translation = [0, 0, 0]
+        # STRUCTURED ROTATION SAMPLING
+        #
+        n_side = int(round(num_rotations ** (1 / 3)))  # cube root grid
 
-            # Translation along each axis
-            for i, axis in enumerate(["x", "y", "z"]):
-                best_d = 0
-                best_count = 0
-                for offset in translation_offsets:
-                    translation_vector = np.zeros(3)
-                    translation_vector[i] = offset
-                    translated_physical = current_grid + translation_vector
-                    translated_voxel = translated_physical / spacing[::-1]
-                    mask = batch_check_spheres_inside(
-                        translated_voxel,
-                        sphere_radius,
-                        distance_map,
-                        tolerance=tolerance,
-                    )
-                    count = np.count_nonzero(mask)
-                    if count > best_count:
-                        best_count = count
-                        best_d = offset
-                current_translation[i] = best_d
-                translation_vector = np.zeros(3)
-                translation_vector[i] = best_d
-                current_grid += translation_vector
+        angles = np.linspace(0, 360, n_side, endpoint=False)
 
-            # Final fitness evaluation
-            final_voxel_positions = current_grid / spacing[::-1]
-            tumor_mask = batch_check_spheres_inside(
-                final_voxel_positions, sphere_radius, distance_map, tolerance=tolerance
-            )
-            tumor_score = np.count_nonzero(tumor_mask)
+        rotations = []
+        for a in angles:
+            for b in angles:
+                for c in angles:
+                    rotations.append(R.from_euler("xyz", [a, b, c], degrees=True))
 
-            if target_mask is not None:
-                target_mask_check = batch_check_spheres_inside(
-                    final_voxel_positions, sphere_radius, target_mask, tolerance=0.01
+        rotations = rotations[:num_rotations]
+
+        # np.random.seed(42)
+        # rotations = R.random(num_rotations)
+
+        physical_grid = grid_points[:, :3]
+
+        with alive_bar(len(rotations), force_tty=True, dual_line=True) as bar:
+            for rotation in rotations:
+
+                rotation_matrix = rotation.as_matrix()
+
+                rotated_grid = rotate_grid(
+                    physical_grid,
+                    rotation_matrix,
+                    tumor_center
                 )
-                target_score = np.count_nonzero(target_mask_check)
-                fitness = tumor_score + target_weight * target_score
-            else:
-                target_mask_check = np.zeros_like(tumor_mask, dtype=bool)
-                target_score = 0
-                fitness = tumor_score
 
-            if fitness > best_fitness:
-                best_fitness = fitness
-                best_orientation = rotation_matrix
-                best_translation = tuple(current_translation)
-                best_inside_tumour = final_voxel_positions[tumor_mask]
-                best_inside_targets = final_voxel_positions[target_mask_check]
-                best_angles = rotation.as_euler("zxy", degrees=True)
-                best_tumor_score = tumor_score
-                best_target_score = target_score
+                current_grid = rotated_grid.copy()
+                current_translation = np.zeros(3)
+
+
+                for i in range(3):
+                    best_d = 0
+                    best_count = -1
+
+                    for offset in translation_offsets:
+                        translation_vector = np.zeros(3)
+                        translation_vector[i] = offset
+
+                        translated = current_grid + translation_vector
+                        voxel = translated / spacing[::-1]
+
+                        mask = batch_check_spheres_inside(
+                            voxel,
+                            sphere_radius,
+                            distance_map,
+                            tolerance=tolerance,
+                        )
+
+                        count = np.count_nonzero(mask)
+
+                        if count > best_count:
+                            best_count = count
+                            best_d = offset
+
+                    current_translation[i] = best_d
+                    current_grid += np.eye(3)[i] * best_d
+
+
+                final_voxel = current_grid / spacing[::-1]
+
+                tumor_mask = batch_check_spheres_inside(
+                    final_voxel,
+                    sphere_radius,
+                    distance_map,
+                    tolerance=tolerance
+                )
+
+                tumor_score = np.count_nonzero(tumor_mask)
+
+                if target_mask is not None:
+                    target_mask_check = batch_check_spheres_inside(
+                        final_voxel,
+                        sphere_radius,
+                        target_mask,
+                        tolerance=0.3
+                    )
+                    target_score = np.count_nonzero(target_mask_check)
+                    fitness = tumor_score + target_weight * target_score
+                else:
+                    target_mask_check = np.zeros_like(tumor_mask, dtype=bool)
+                    target_score = 0
+                    fitness = tumor_score
+
+
+                if fitness > best_fitness:
+                    best_fitness = fitness
+                    best_orientation = rotation_matrix
+                    best_translation = tuple(current_translation)
+                    best_inside_tumour = final_voxel[tumor_mask]
+                    best_inside_targets = final_voxel[target_mask_check]
+                    best_angles = rotation.as_euler("xyz", degrees=True)
+                    best_tumor_score = tumor_score
+                    best_target_score = target_score
+
+                bar()
 
         return (
             best_orientation,
@@ -418,30 +461,35 @@ def compute_lattice_grid_target(output):
         colors = grid_points1[:, 3].reshape(-1, 1)
         centred_grid = np.hstack([centred_points, colors])
     
-        print("Rotating grid...")
-    
-        # # Call the optimize_grid_orientation function and get the results
-        (
-            best_orientation,
-            best_fitness_rotation,
-            best_inside_rotation,
-            best_inside_target_rotation,
-            best_tumor_score_rotation,
-            best_target_score_rotation,
-        ) = optimize_grid_orientation(
-            centred_grid, distance_map, target_volume, sph_radius, centroid, spacing
-        )
-    
-        # Now use the best_orientation to rotate the grid
-        # optimized_grid_points = rotate_grid(centred_grid, best_orientation, centroid)
-    
-        print("Spheres inside based on rotation:", len(best_inside_rotation))
-        print(
-            "Spheres covering target based on rotation:", len(best_inside_target_rotation)
-        )
+        # print("Rotating grid...")
+        #
+        # # # Call the optimize_grid_orientation function and get the results
+        # (
+        #     best_orientation,
+        #     best_fitness_rotation,
+        #     best_inside_rotation,
+        #     best_inside_target_rotation,
+        #     best_tumor_score_rotation,
+        #     best_target_score_rotation,
+        # ) = optimize_grid_orientation(
+        #     centred_grid, distance_map, target_volume, sph_radius, centroid, spacing
+        # )
+        #
+        # # Now use the best_orientation to rotate the grid
+        # # optimized_grid_points = rotate_grid(centred_grid, best_orientation, centroid)
+        #
+        # print("Spheres inside based on rotation:", len(best_inside_rotation))
+        #
+        # if additional_target is True:
+        #     print("Spheres covering target based on rotation:", len(best_inside_target_rotation))
     
         print("Translating & rotating grid...")
-    
+
+        # iter = 0
+        # max = 10
+        #
+        # while iter <= max:
+        #     iter += 1
         (
             best_orientation,
             best_translation,
@@ -458,41 +506,45 @@ def compute_lattice_grid_target(output):
             sphere_radius=sph_radius,
             spacing=spacing,
             target_mask=target_volume,
-            translation_range=70,
+            translation_range=40,
             translation_step=2,
-            num_rotations=5000,
-        )
-    
+            num_rotations=1500)
+
         print("Spheres inside based on rotation & translation:", len(best_inside_tumour_RT))
-        print(
-            "Spheres target coverage based on rotation & translation:",
-            len(best_inside_targets_RT),
-        )
+
+        if additional_target is True:
+            print("Spheres target coverage based on rotation & translation:",len(best_inside_targets_RT))
+
+        # if len(best_inside_rotation) > len(best_inside_tumour_RT):
+        #     spheres_inside = np.array(best_inside_rotation)
+        #     spheres_inside_array.append(spheres_inside)
+        #     chosen_method = "Rotation"
+        # else:
+        #     spheres_inside = np.array(best_inside_tumour_RT)
+        #     spheres_inside_array.append(spheres_inside)
+        #     chosen_method = "Rotation + Translation"
+        #
+        ### Temporary
+        chosen_method = "Translation + Rotation"
+        spheres_inside = np.array(best_inside_tumour_RT)
+        spheres_inside_array.append(spheres_inside)
     
-        if (best_fitness_rotation) > (best_fitness_rotation_translation):
-            spheres_inside = np.array(best_inside_rotation)
-            spheres_inside_array.append(spheres_inside)
-            chosen_method = "Rotation"
-        else:
-            spheres_inside = np.array(best_inside_tumour_RT)
-            spheres_inside_array.append(spheres_inside)
-            chosen_method = "Rotation + Translation"
     
+        print("Grid optimised!", f"Chosen method: {chosen_method}.", "Total spheres=", len(spheres_inside))
     
-        print("Grid optimised!", f"Chosen method: {chosen_method}")
-    
-        if best_fitness_rotation > best_fitness_rotation_translation:
-            best_fitness = len(best_inside_rotation)
-            print("Number of spheres inside (rotation only):", best_fitness)
-    
-        else:
-            best_fitness = len(best_inside_tumour_RT)
-            print("Number of spheres inside (translation & rotation):", best_fitness)
+        # if best_fitness_rotation > best_fitness_rotation_translation:
+        #     best_fitness = len(best_inside_rotation)
+        #     print("Number of spheres inside (rotation only):", best_fitness)
+        #
+        # else:
+        #     best_fitness = len(best_inside_tumour_RT)
+        #     print("Number of spheres inside (translation & rotation):", best_fitness)
 
     mask_array_1 = np.zeros(ct_shape, dtype=np.uint8)
     mask_array_2 = np.zeros(ct_shape, dtype=np.uint8)
 
     spheres_inside_array = np.vstack(spheres_inside_array)
+    # print(len(spheres_inside_array))
 
     def save_individual_sphere_masks(
         spheres, radius, spacing, origin, direction, mask_shape, prefix="Sphere"
@@ -512,11 +564,11 @@ def compute_lattice_grid_target(output):
 
     print("Drawing spheres in mask...")
 
-    for i, (x, y, z) in enumerate(spheres_inside):
+    for i, (x, y, z) in enumerate(spheres_inside_array):
         center_mm = np.array([float(x), float(y), float(z)])
         draw_sphere_mask(mask_array_1, center_mm, sph_radius, spacing)
 
-    for i, (x, y, z) in enumerate(spheres_inside):
+    for i, (x, y, z) in enumerate(spheres_inside_array):
         center_mm = np.array([float(x), float(y), float(z)])
         draw_sphere_mask(mask_array_2, center_mm, sph_radius + 5, spacing)
 
@@ -535,11 +587,11 @@ def compute_lattice_grid_target(output):
         mask_array_2, "all_spheres_expanded_1.mhd", spacing, origin, direction
     )
 
-    np.savetxt(output_folder / "spheres_inside.txt", spheres_inside)
+    np.savetxt(output_folder / "spheres_inside.txt", spheres_inside_array)
 
     print("Masks saved!")
 
-    print("Number of Spheres in target volume:", best_fitness)
+    print("Number of Spheres in target volume:", len(spheres_inside))
 
 
 if __name__ == "__main__":
