@@ -92,7 +92,7 @@ class ROIPicker(QWidget):
         slider_layout.addWidget(self.slider_label)
         slider_layout.addWidget(self.slider)
 
-        self.slider_label_2 = QLabel("1")  
+        self.slider_label_2 = QLabel("1")
 
         self.slider_value_changed(self.slider.value())
 
@@ -224,7 +224,8 @@ class OARRowWidget(QWidget):
         self.checkbox = QCheckBox(roi_name)
 
         self.margin_box = QComboBox()
-        self.margin_box.addItems(["5", "10", "15"])
+        # self.margin_box.addItems(["5", "10", "15"])
+        self.margin_box.addItems(["10", "15"])
         self.margin_box.setEnabled(False)
 
         layout = QHBoxLayout()

@@ -2,7 +2,7 @@ import glob
 import json
 import os
 from pathlib import Path
-
+from alive_progress import alive_bar; import time
 import gatetools as gt
 import itk
 import numpy as np
@@ -105,6 +105,33 @@ def resample_to_reference(input_image, reference_image, interpolator="nearest"):
     resampler.Update()
     return resampler.GetOutput()
 
+def chunked_distance_transform(mask, spacing, chunks=20, overlap_vox=5):
+
+
+    z_slices = np.array_split(np.arange(mask.shape[0]), chunks)
+    result = np.zeros_like(mask, dtype=float)
+
+    with alive_bar(len(z_slices), force_tty=True) as bar:
+        for z_idx in z_slices:
+
+            #define extended (overlapped) region
+            z_start = max(z_idx[0] - overlap_vox, 0)
+            z_end = min(z_idx[-1] + overlap_vox + 1, mask.shape[0])
+
+            submask = mask[z_start:z_end, :, :]
+
+            #compute distance transform on extended chunk
+            dist_sub = distance_transform_edt(~submask, sampling=spacing)
+
+            #crop back to original chunk region
+            crop_start = z_idx[0] - z_start
+            crop_end = crop_start + len(z_idx)
+
+            result[z_idx, :, :] = dist_sub[crop_start:crop_end, :, :]
+
+            bar()
+
+    return result
 
 def compute_volumes(data):
     """
@@ -253,8 +280,13 @@ def compute_volumes(data):
     if len(selected_oars) != 0:
         oar_masks = []
         spacing = np.array(ct_image.GetSpacing())
+        OAR_index = 0
 
         for oar_name, margin_mm in selected_oars:
+            OAR_index += 1
+
+            print("OAR Index:", OAR_index)
+
             roi = gt.region_of_interest(structset, oar_name)
             mask_itk = roi.get_mask(ct_image, corrected=False)
 
