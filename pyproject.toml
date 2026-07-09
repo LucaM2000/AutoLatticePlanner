@@ -15,6 +15,7 @@ dependencies = [
     "scikit-image",
     "matplotlib",
     "click",
+    "alive_progress",
 ]
 requires-python = ">=3.9"
 authors = [

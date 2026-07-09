@@ -2,7 +2,8 @@ import glob
 import json
 import os
 from pathlib import Path
-from alive_progress import alive_bar; import time
+from alive_progress import alive_bar
+import time
 import gatetools as gt
 import itk
 import numpy as np
