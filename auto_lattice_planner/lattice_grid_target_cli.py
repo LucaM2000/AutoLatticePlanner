@@ -78,11 +78,6 @@ def compute_lattice_grid_target(output):
     # print('Origin:', origin)
     # print('Direction:', direction)
 
-    ## Lattice Dimensions
-    # sph_radius = 10
-    # x_sph_spacing = 80
-    # y_sph_spacing = 40
-    # z_sph_spacing = 40
     xgrid = 540
     ygrid = 540
     zgrid = 540
@@ -206,7 +201,7 @@ def compute_lattice_grid_target(output):
             target_weight=1,
             translation_range=40,
             translation_step=2,
-            num_rotations=300,  # now STRUCTURED, not random
+            num_rotations=300,
     ):
 
         best_orientation = None
@@ -229,7 +224,7 @@ def compute_lattice_grid_target(output):
         #
         n_side = int(round(num_rotations ** (1 / 3)))  # cube root grid
 
-        angles = np.linspace(0, 360, n_side, endpoint=False)
+        angles = np.linspace(0, 90, n_side, endpoint=False)
 
         rotations = []
         for a in angles:
@@ -238,9 +233,6 @@ def compute_lattice_grid_target(output):
                     rotations.append(R.from_euler("xyz", [a, b, c], degrees=True))
 
         rotations = rotations[:num_rotations]
-
-        # np.random.seed(42)
-        # rotations = R.random(num_rotations)
 
         physical_grid = grid_points[:, :3]
 
@@ -322,6 +314,7 @@ def compute_lattice_grid_target(output):
                     best_angles = rotation.as_euler("xyz", degrees=True)
                     best_tumor_score = tumor_score
                     best_target_score = target_score
+                    print('Current best score:', len(best_inside_tumour))
 
                 bar()
 
@@ -337,8 +330,16 @@ def compute_lattice_grid_target(output):
         )
 
     def draw_sphere_mask(mask, center_mm, radius_mm, spacing):
-        x_dim, y_dim, z_dim = mask.shape
-        z_spacing, y_spacing, x_spacing = spacing
+        z_dim, y_dim, x_dim = mask.shape
+        x_spacing, y_spacing, z_spacing = spacing
+
+        # print("spacing =", spacing)
+        # print(
+        #     "x_spacing =", x_spacing,
+        #     "y_spacing =", y_spacing,
+        #     "z_spacing =", z_spacing
+        # )
+        # print(mask.shape)
 
         # Define voxel bounds around the sphere center
         radius_vox = [
@@ -463,7 +464,7 @@ def compute_lattice_grid_target(output):
     
         # print("Rotating grid...")
         #
-        # # # Call the optimize_grid_orientation function and get the results
+        #
         # (
         #     best_orientation,
         #     best_fitness_rotation,
@@ -475,7 +476,7 @@ def compute_lattice_grid_target(output):
         #     centred_grid, distance_map, target_volume, sph_radius, centroid, spacing
         # )
         #
-        # # Now use the best_orientation to rotate the grid
+        #
         # # optimized_grid_points = rotate_grid(centred_grid, best_orientation, centroid)
         #
         # print("Spheres inside based on rotation:", len(best_inside_rotation))
@@ -506,9 +507,9 @@ def compute_lattice_grid_target(output):
             sphere_radius=sph_radius,
             spacing=spacing,
             target_mask=target_volume,
-            translation_range=40,
+            translation_range=30,
             translation_step=2,
-            num_rotations=1500)
+            num_rotations=(15**3))
 
         print("Spheres inside based on rotation & translation:", len(best_inside_tumour_RT))
 

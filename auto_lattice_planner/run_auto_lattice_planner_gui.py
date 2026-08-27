@@ -5,11 +5,18 @@ import time
 
 
 def main():
-    start_time = time.time()
+
     select_image_main()
+
     compute_lattice_grid_target(".")
-    end_time = time.time()
-    print("Time elapsed: ", end_time - start_time)
+
+    with open("timer.txt", "r") as f:
+        start = float(f.read())
+
+    spheres_placed_time = time.time()
+
+    print(f"Spheres placed in: {spheres_placed_time - start:.2f} seconds")
+
     rtstruct_conversion_gui_main()
 
 

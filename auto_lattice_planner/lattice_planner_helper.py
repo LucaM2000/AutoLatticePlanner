@@ -134,9 +134,7 @@ def chunked_distance_transform(mask, spacing, chunks=20, overlap_vox=5):
     return result
 
 def compute_volumes(data):
-    """
-    data: LatticeData
-    """
+
 
     dicom_series_path = data.dicom_series_path
     rtstruct_path = data.rtstruct_path
@@ -401,8 +399,16 @@ def compute_volumes(data):
 
 
 def draw_sphere_mask(mask, center_mm, radius_mm, spacing):
-    x_dim, y_dim, z_dim = mask.shape
-    z_spacing, y_spacing, x_spacing = spacing
+    z_dim, y_dim, x_dim = mask.shape
+    x_spacing, y_spacing, z_spacing = spacing
+
+    # print("spacing =", spacing)
+    # print(
+    #     "x_spacing =", x_spacing,
+    #     "y_spacing =", y_spacing,
+    #     "z_spacing =", z_spacing
+    # )
+    # print(mask.shape)
 
     # Define voxel bounds around the sphere center
     radius_vox = [
@@ -475,8 +481,9 @@ def convert_to_rtstruct(data):
         [0, 192, 192],  # teal
         [192, 0, 192],  # violet
         [160, 82, 45],  # brown (useful for bone-like structures)
-        [220, 220, 220],  # light grey (PTV shells, margins)
-        [128, 128, 128],  # mid grey
+        [255, 255, 128],  # light lemon
+        [0, 255, 64],  # bright spring green
+        [255, 128, 255],  # bright lavender
     ]
 
     print("Data Loaded!")
@@ -516,8 +523,8 @@ def convert_to_rtstruct(data):
     print("CT slices:", len(ct_files))
 
     # Add your new ROIs
-    rtstruct_new.add_roi(mask=mask_bool_1, name="Cibles_Lattice", color=[255, 0, 0])
-    rtstruct_new.add_roi(mask=mask_bool_2, name="CiblesExt_Lattice", color=[0, 255, 0])
+    rtstruct_new.add_roi(mask=mask_bool_1, name="Cibles_Lattice", color=[255, 0, 0], approximate_contours=False)
+    rtstruct_new.add_roi(mask=mask_bool_2, name="CiblesExt_Lattice", color=[0, 255, 0], approximate_contours=False)
 
     print("Grid added!")
 
@@ -528,6 +535,11 @@ def convert_to_rtstruct(data):
     individual_sphere_structrues = "y"
 
     if individual_sphere_structrues == "y":
+        spheres_inside = np.asarray(spheres_inside)
+
+        if spheres_inside.ndim == 1:
+            spheres_inside = spheres_inside.reshape(1, 3)
+
         for i, (x, y, z) in enumerate(spheres_inside, start=1):
             center_mm = np.array([float(x), float(y), float(z)])
 
@@ -548,18 +560,34 @@ def convert_to_rtstruct(data):
             mask2 = np.zeros_like(mask_array_1)
             draw_sphere_mask(mask2, center_mm, sph_radius + 5, spacing)
 
+            single_mask_bool_2= np.transpose(mask2.astype(bool), (1, 2, 0))
+
             # Pick color from palette (wrap around if more spheres than colors)
             color = colors[(i - 1) % len(colors)]
 
             # Add ROI with unique name
             rtstruct_new.add_roi(
-                mask=single_mask_bool, name=f"Sphere_Ext {i}", color=color
+                mask=single_mask_bool_2, name=f"Sphere_Ext {i}", color=color
             )
 
         print("Individual sphere structures saved!")
 
+        with open("timer.txt", "r") as f:
+            start = float(f.read())
+
+        end = time.time()
+
+        print(f"Time until filesave: {end - start:.2f} seconds")
+
     else:
         print("Not saving individual spheres")
+
+        with open("timer.txt", "r") as f:
+            start = float(f.read())
+
+        end = time.time()
+
+        print(f"Time until filesave: {end - start:.2f} seconds")
     return rtstruct_new
 
 
