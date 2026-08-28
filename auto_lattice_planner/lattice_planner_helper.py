@@ -342,31 +342,21 @@ def compute_volumes(data):
             oars_mask = itk.imread("OARs_combined.mhd")
             oars_combined_array = itk.GetArrayFromImage(oars_mask)
 
-            primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
-            primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
-            primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
-
-            oars_combined_array[:, 0] = (oars_combined_array[:, 0] * spacing[2]).astype(np.uint8)
-            oars_combined_array[:, 1] = (oars_combined_array[:, 1] * spacing[1]).astype(np.uint8)
-            oars_combined_array[:, 2] = (oars_combined_array[:, 2] * spacing[0]).astype(np.uint8)
-
             tumour_volume = primary_array & (~oars_combined_array)
-            distance_map = distance_transform_edt(tumour_volume)
+            distance_map = distance_transform_edt(tumour_volume, sampling=spacing[::-1])
 
             OARs_volume = oars_combined_array
-            OARs_distance_map = distance_transform_edt(OARs_volume)
+            OARs_distance_map = distance_transform_edt(
+                OARs_volume, sampling=spacing[::-1]
+            )
 
             np.save("OARs_volume.npy", OARs_volume)
             np.save("OARs_distance_map.npy", OARs_distance_map)
 
         else:
-            primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
-            primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
-            primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
-
             tumour_volume = primary_array
-            distance_map = distance_transform_edt(tumour_volume)
-    
+            distance_map = distance_transform_edt(tumour_volume, sampling=spacing[::-1])
+
         print("reached here")
     
         np.save(output_folder / str(tumour_filename), tumour_volume)
@@ -399,7 +389,7 @@ def compute_volumes(data):
         print("No secondary ROI selected.")
 
 
-def draw_sphere_mask(mask, center_mm, radius_mm, spacing):
+def draw_sphere_mask(mask, center_vox, radius_mm, spacing):
     z_dim, y_dim, x_dim = mask.shape
     x_spacing, y_spacing, z_spacing = spacing
 
@@ -417,25 +407,30 @@ def draw_sphere_mask(mask, center_mm, radius_mm, spacing):
         int(np.ceil(radius_mm / y_spacing)),
         int(np.ceil(radius_mm / z_spacing)),
     ]
+    # print(mask.shape)  # -> Z/Y/X
+    # print(spacing)  # -> X/Y/Z
+    # print(radius_mm)
+    # print(center_vox)  # -> Z/Y/X
+    # print(radius_vox)  # -> X/Y/Z
 
-    x0 = max(int(round(center_mm[0])) - radius_vox[0], 0)
-    x1 = min(int(round(center_mm[0])) + radius_vox[0] + 1, x_dim)
-    y0 = max(int(round(center_mm[1])) - radius_vox[1], 0)
-    y1 = min(int(round(center_mm[1])) + radius_vox[1] + 1, y_dim)
-    z0 = max(int(round(center_mm[2])) - radius_vox[2], 0)
-    z1 = min(int(round(center_mm[2])) + radius_vox[2] + 1, z_dim)
+    x0 = max(int(round(center_vox[2])) - radius_vox[0], 0)
+    x1 = min(int(round(center_vox[2])) + radius_vox[0] + 1, x_dim)
+    y0 = max(int(round(center_vox[1])) - radius_vox[1], 0)
+    y1 = min(int(round(center_vox[1])) + radius_vox[1] + 1, y_dim)
+    z0 = max(int(round(center_vox[0])) - radius_vox[2], 0)
+    z1 = min(int(round(center_vox[0])) + radius_vox[2] + 1, z_dim)
 
-    X, Y, Z = np.meshgrid(
-        np.arange(x0, x1), np.arange(y0, y1), np.arange(z0, z1), indexing="ij"
+    Z, Y, X = np.meshgrid(
+        np.arange(z0, z1), np.arange(y0, y1), np.arange(x0, x1), indexing="ij"
     )
 
     dist_vox = np.sqrt(
-        ((X - center_mm[0]) * x_spacing) ** 2
-        + ((Y - center_mm[1]) * y_spacing) ** 2
-        + ((Z - center_mm[2]) * z_spacing) ** 2
+        ((X - center_vox[2]) * x_spacing) ** 2
+        + ((Y - center_vox[1]) * y_spacing) ** 2
+        + ((Z - center_vox[0]) * z_spacing) ** 2
     )
 
-    mask[x0:x1, y0:y1, z0:z1][dist_vox <= radius_mm] = 1
+    mask[z0:z1, y0:y1, x0:x1][dist_vox <= radius_mm] = 1
 
 
 def convert_to_rtstruct(data):
@@ -517,8 +512,8 @@ def convert_to_rtstruct(data):
     mask_bool_1 = mask_array_1.astype(bool)
     mask_bool_2 = mask_array_2.astype(bool)
 
-    mask_bool_1 = np.transpose(mask_bool_1, (1, 2, 0))
-    mask_bool_2 = np.transpose(mask_bool_2, (1, 2, 0))
+    mask_bool_1 = np.transpose(mask_bool_1, (2, 1, 0))
+    mask_bool_2 = np.transpose(mask_bool_2, (2, 1, 0))
 
     print("Mask shape:", mask_bool_1.shape)
     print("CT slices:", len(ct_files))
@@ -549,7 +544,7 @@ def convert_to_rtstruct(data):
             draw_sphere_mask(mask, center_mm, sph_radius, spacing)
 
             # Convert to bool and transpose to match RTStruct convention
-            single_mask_bool = np.transpose(mask.astype(bool), (1, 2, 0))
+            single_mask_bool = np.transpose(mask.astype(bool), (2, 1, 0))
 
             # Pick color from palette (wrap around if more spheres than colors)
             color = colors[(i - 1) % len(colors)]
@@ -561,7 +556,7 @@ def convert_to_rtstruct(data):
             mask2 = np.zeros_like(mask_array_1)
             draw_sphere_mask(mask2, center_mm, sph_radius + 5, spacing)
 
-            single_mask_bool_2= np.transpose(mask2.astype(bool), (1, 2, 0))
+            single_mask_bool_2 = np.transpose(mask2.astype(bool), (2, 1, 0))
 
             # Pick color from palette (wrap around if more spheres than colors)
             color = colors[(i - 1) % len(colors)]

@@ -2,11 +2,12 @@ import glob
 import json
 import os
 from pathlib import Path
-from alive_progress import alive_bar; import time
+
 import click
 import gatetools as gt
 import itk
 import numpy as np
+from alive_progress import alive_bar
 from scipy.spatial.transform import Rotation as R
 from skimage import measure
 
@@ -97,7 +98,7 @@ def compute_lattice_grid_target(output):
         return combined
 
     def batch_check_spheres_inside(rotated_points, radius, distance_map, tolerance):
-        rotated_points = np.asarray(rotated_points)
+        rotated_points = np.asarray(rotated_points)  # X Y Z
         if rotated_points.ndim == 1:
             rotated_points = rotated_points.reshape(1, -1)
 
@@ -108,11 +109,11 @@ def compute_lattice_grid_target(output):
         # Bounds check based on shape (x_dim, y_dim, z_dim)
         valid = (
             (x >= 0)
-            & (x < distance_map.shape[0])
+            & (x < distance_map.shape[2])
             & (y >= 0)
             & (y < distance_map.shape[1])
             & (z >= 0)
-            & (z < distance_map.shape[2])
+            & (z < distance_map.shape[0])
         )
 
         x_valid = x[valid]
@@ -120,7 +121,7 @@ def compute_lattice_grid_target(output):
         z_valid = z[valid]
 
         # Correct axis order preserved: X=0, Y=1, Z=2
-        distances = distance_map[x_valid, y_valid, z_valid]
+        distances = distance_map[z_valid, y_valid, x_valid]
         inside = distances >= radius * tolerance
 
         result_mask = np.zeros(rotated_points.shape[0], dtype=bool)
@@ -192,16 +193,16 @@ def compute_lattice_grid_target(output):
             )
 
     def optimize_grid_orientation_and_translation(
-            grid_points,
-            tumor_center,
-            distance_map,
-            sphere_radius,
-            spacing,
-            target_mask=None,
-            target_weight=1,
-            translation_range=40,
-            translation_step=2,
-            num_rotations=300,
+        grid_points,  # X/Y/Z
+        tumor_center,  # X/Y/Z
+        distance_map,  # Z/Y/X
+        sphere_radius,
+        spacing,  # X/Y/Z
+        target_mask=None,  # Z/Y/X
+        target_weight=1,
+        translation_range=40,
+        translation_step=2,
+        num_rotations=300,
     ):
 
         best_orientation = None
@@ -234,7 +235,7 @@ def compute_lattice_grid_target(output):
 
         rotations = rotations[:num_rotations]
 
-        physical_grid = grid_points[:, :3]
+        physical_grid = grid_points[:, :3]  # X/Y/Z
 
         with alive_bar(len(rotations), force_tty=True, dual_line=True) as bar:
             for rotation in rotations:
@@ -260,12 +261,12 @@ def compute_lattice_grid_target(output):
                         translation_vector[i] = offset
 
                         translated = current_grid + translation_vector
-                        voxel = translated / spacing[::-1]
+                        voxel = translated / spacing
 
                         mask = batch_check_spheres_inside(
-                            voxel,
+                            voxel,  # X/Y/Z
                             sphere_radius,
-                            distance_map,
+                            distance_map,  # Z/Y/X
                             tolerance=tolerance,
                         )
 
@@ -278,8 +279,7 @@ def compute_lattice_grid_target(output):
                     current_translation[i] = best_d
                     current_grid += np.eye(3)[i] * best_d
 
-
-                final_voxel = current_grid / spacing[::-1]
+                final_voxel = current_grid / spacing
 
                 tumor_mask = batch_check_spheres_inside(
                     final_voxel,
@@ -328,44 +328,6 @@ def compute_lattice_grid_target(output):
             best_tumor_score,
             best_target_score,
         )
-
-    def draw_sphere_mask(mask, center_mm, radius_mm, spacing):
-        z_dim, y_dim, x_dim = mask.shape
-        x_spacing, y_spacing, z_spacing = spacing
-
-        # print("spacing =", spacing)
-        # print(
-        #     "x_spacing =", x_spacing,
-        #     "y_spacing =", y_spacing,
-        #     "z_spacing =", z_spacing
-        # )
-        # print(mask.shape)
-
-        # Define voxel bounds around the sphere center
-        radius_vox = [
-            int(np.ceil(radius_mm / x_spacing)),
-            int(np.ceil(radius_mm / y_spacing)),
-            int(np.ceil(radius_mm / z_spacing)),
-        ]
-
-        x0 = max(int(round(center_mm[0])) - radius_vox[0], 0)
-        x1 = min(int(round(center_mm[0])) + radius_vox[0] + 1, x_dim)
-        y0 = max(int(round(center_mm[1])) - radius_vox[1], 0)
-        y1 = min(int(round(center_mm[1])) + radius_vox[1] + 1, y_dim)
-        z0 = max(int(round(center_mm[2])) - radius_vox[2], 0)
-        z1 = min(int(round(center_mm[2])) + radius_vox[2] + 1, z_dim)
-
-        X, Y, Z = np.meshgrid(
-            np.arange(x0, x1), np.arange(y0, y1), np.arange(z0, z1), indexing="ij"
-        )
-
-        dist_vox = np.sqrt(
-            ((X - center_mm[0]) * x_spacing) ** 2
-            + ((Y - center_mm[1]) * y_spacing) ** 2
-            + ((Z - center_mm[2]) * z_spacing) ** 2
-        )
-
-        mask[x0:x1, y0:y1, z0:z1][dist_vox <= radius_mm] = 1
 
     print("Generating grid....")
 
@@ -448,20 +410,19 @@ def compute_lattice_grid_target(output):
         distance_map = np.load(distance_file)
         tumour_volume = np.load(volume_file)
 
-    
         verts, faces, normals, values = measure.marching_cubes(tumour_volume, level=0)
-    
-        centroid_x = np.mean(verts[:, 0])
+
+        centroid_x = np.mean(verts[:, 2])
         centroid_y = np.mean(verts[:, 1])
-        centroid_z = np.mean(verts[:, 2])
-    
+        centroid_z = np.mean(verts[:, 0])
+
         centroid = (centroid_x, centroid_y, centroid_z)
-    
+
         centred_points = grid_points1[:, :3] + centroid
-    
+
         colors = grid_points1[:, 3].reshape(-1, 1)
         centred_grid = np.hstack([centred_points, colors])
-    
+
         # print("Rotating grid...")
         #
         #
@@ -495,18 +456,18 @@ def compute_lattice_grid_target(output):
             best_orientation,
             best_translation,
             best_fitness_rotation_translation,
-            best_inside_tumour_RT,
+            best_inside_tumour_RT,  # X/Y/Z
             best_inside_targets_RT,
             best_angles_RT,
             best_tumor_score_RT,
             best_target_score_RT,
         ) = optimize_grid_orientation_and_translation(
-            centred_grid,
-            tumor_center=centroid,
-            distance_map=distance_map,
+            centred_grid,  # X/Y/Z
+            tumor_center=centroid,  # X/Y/Z
+            distance_map=distance_map,  # Z/Y/X
             sphere_radius=sph_radius,
-            spacing=spacing,
-            target_mask=target_volume,
+            spacing=spacing,  # X/Y/Z
+            target_mask=target_volume,  # Z/Y/X
             translation_range=30,
             translation_step=2,
             num_rotations=(15**3))
@@ -541,10 +502,10 @@ def compute_lattice_grid_target(output):
         #     best_fitness = len(best_inside_tumour_RT)
         #     print("Number of spheres inside (translation & rotation):", best_fitness)
 
-    mask_array_1 = np.zeros(ct_shape, dtype=np.uint8)
+    mask_array_1 = np.zeros(ct_shape, dtype=np.uint8)  # Z/Y/X
     mask_array_2 = np.zeros(ct_shape, dtype=np.uint8)
 
-    spheres_inside_array = np.vstack(spheres_inside_array)
+    spheres_inside_array = np.vstack(spheres_inside_array)  # X/Y/Z
     # print(len(spheres_inside_array))
 
     def save_individual_sphere_masks(
@@ -555,7 +516,7 @@ def compute_lattice_grid_target(output):
 
             mask = np.zeros(mask_shape, dtype=np.uint8)
             center_mm = np.array([float(x), float(y), float(z)])
-            draw_sphere_mask(mask, center_mm, radius, spacing)
+            lattice_planner_helper.draw_sphere_mask(mask, center_mm, radius, spacing)
 
             filename = f"{prefix}_{i}.mhd"
 
@@ -566,12 +527,16 @@ def compute_lattice_grid_target(output):
     print("Drawing spheres in mask...")
 
     for i, (x, y, z) in enumerate(spheres_inside_array):
-        center_mm = np.array([float(x), float(y), float(z)])
-        draw_sphere_mask(mask_array_1, center_mm, sph_radius, spacing)
+        center_vox = np.array([float(z), float(y), float(x)])
+        lattice_planner_helper.draw_sphere_mask(
+            mask_array_1, center_vox, sph_radius, spacing
+        )
 
     for i, (x, y, z) in enumerate(spheres_inside_array):
-        center_mm = np.array([float(x), float(y), float(z)])
-        draw_sphere_mask(mask_array_2, center_mm, sph_radius + 5, spacing)
+        center_vox = np.array([float(z), float(y), float(x)])
+        lattice_planner_helper.draw_sphere_mask(
+            mask_array_2, center_vox, sph_radius + 5, spacing
+        )
 
     # Convert to ITK and save both
     def save_mask_as_mhd(mask_array, filename, spacing, origin, direction):
