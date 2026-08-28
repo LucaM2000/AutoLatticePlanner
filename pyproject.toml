@@ -4,7 +4,7 @@ build-backend = "hatchling.build"
 
 [project]
 name = "auto_lattice_planner"
-version = "0.1.0"
+version = "0.1.1"
 dependencies = [
     "numpy",
     "scipy",
@@ -15,6 +15,7 @@ dependencies = [
     "scikit-image",
     "matplotlib",
     "click",
+    "alive_progress",
 ]
 requires-python = ">=3.9"
 authors = [
