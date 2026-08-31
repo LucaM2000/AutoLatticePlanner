@@ -512,8 +512,8 @@ def convert_to_rtstruct(data):
     mask_bool_1 = mask_array_1.astype(bool)
     mask_bool_2 = mask_array_2.astype(bool)
 
-    mask_bool_1 = np.transpose(mask_bool_1, (2, 1, 0))
-    mask_bool_2 = np.transpose(mask_bool_2, (2, 1, 0))
+    mask_bool_1 = np.transpose(mask_bool_1, (1, 2, 0))
+    mask_bool_2 = np.transpose(mask_bool_2, (1, 2, 0))
 
     print("Mask shape:", mask_bool_1.shape)
     print("CT slices:", len(ct_files))
@@ -537,14 +537,14 @@ def convert_to_rtstruct(data):
             spheres_inside = spheres_inside.reshape(1, 3)
 
         for i, (x, y, z) in enumerate(spheres_inside, start=1):
-            center_mm = np.array([float(x), float(y), float(z)])
+            center_mm = np.array([float(z), float(y), float(x)])
 
             # Build one mask just for this sphere
             mask = np.zeros_like(mask_array_1)
             draw_sphere_mask(mask, center_mm, sph_radius, spacing)
 
             # Convert to bool and transpose to match RTStruct convention
-            single_mask_bool = np.transpose(mask.astype(bool), (2, 1, 0))
+            single_mask_bool = np.transpose(mask.astype(bool), (1, 2, 0))
 
             # Pick color from palette (wrap around if more spheres than colors)
             color = colors[(i - 1) % len(colors)]
@@ -556,7 +556,7 @@ def convert_to_rtstruct(data):
             mask2 = np.zeros_like(mask_array_1)
             draw_sphere_mask(mask2, center_mm, sph_radius + 5, spacing)
 
-            single_mask_bool_2 = np.transpose(mask2.astype(bool), (2, 1, 0))
+            single_mask_bool_2 = np.transpose(mask2.astype(bool), (1, 2, 0))
 
             # Pick color from palette (wrap around if more spheres than colors)
             color = colors[(i - 1) % len(colors)]
