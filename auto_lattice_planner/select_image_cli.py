@@ -1,5 +1,6 @@
 import json
 import os
+import time
 
 import click
 
@@ -109,6 +110,10 @@ def main(
 
     with open("paths.json", "w") as f:
         json.dump(data.to_json(), f, indent=4)
+
+    start = time.time()
+    with open("timer.txt", "w") as f:
+        f.write(str(start))
 
     lattice_planner_helper.compute_volumes(data)
 

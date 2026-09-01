@@ -1,7 +1,7 @@
 import json
 import os
 import sys
-
+import time
 import pydicom
 from PyQt5.QtCore import Qt
 from PyQt5.QtWidgets import (
@@ -414,6 +414,13 @@ def main():
 
     with open("paths.json", "w") as f:
         json.dump(data.to_json(), f, indent=4)
+
+    start = time.time()
+
+    with open("timer.txt", "w") as f:
+        f.write(str(start))
+
+    print("Timer started")
 
     lattice_planner_helper.compute_volumes(data)
 

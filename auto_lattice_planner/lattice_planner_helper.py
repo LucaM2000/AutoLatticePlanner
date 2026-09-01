@@ -135,9 +135,7 @@ def chunked_distance_transform(mask, spacing, chunks=20, overlap_vox=5):
     return result
 
 def compute_volumes(data):
-    """
-    data: LatticeData
-    """
+
 
     dicom_series_path = data.dicom_series_path
     rtstruct_path = data.rtstruct_path
@@ -344,31 +342,21 @@ def compute_volumes(data):
             oars_mask = itk.imread("OARs_combined.mhd")
             oars_combined_array = itk.GetArrayFromImage(oars_mask)
 
-            primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
-            primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
-            primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
-
-            oars_combined_array[:, 0] = (oars_combined_array[:, 0] * spacing[2]).astype(np.uint8)
-            oars_combined_array[:, 1] = (oars_combined_array[:, 1] * spacing[1]).astype(np.uint8)
-            oars_combined_array[:, 2] = (oars_combined_array[:, 2] * spacing[0]).astype(np.uint8)
-
             tumour_volume = primary_array & (~oars_combined_array)
-            distance_map = distance_transform_edt(tumour_volume)
+            distance_map = distance_transform_edt(tumour_volume, sampling=spacing[::-1])
 
             OARs_volume = oars_combined_array
-            OARs_distance_map = distance_transform_edt(OARs_volume)
+            OARs_distance_map = distance_transform_edt(
+                OARs_volume, sampling=spacing[::-1]
+            )
 
             np.save("OARs_volume.npy", OARs_volume)
             np.save("OARs_distance_map.npy", OARs_distance_map)
 
         else:
-            primary_array[:, 0] = (primary_array[:, 0] * spacing[2]).astype(np.uint8)
-            primary_array[:, 1] = (primary_array[:, 1] * spacing[1]).astype(np.uint8)
-            primary_array[:, 2] = (primary_array[:, 2] * spacing[0]).astype(np.uint8)
-
             tumour_volume = primary_array
-            distance_map = distance_transform_edt(tumour_volume)
-    
+            distance_map = distance_transform_edt(tumour_volume, sampling=spacing[::-1])
+
         print("reached here")
     
         np.save(output_folder / str(tumour_filename), tumour_volume)
@@ -401,9 +389,17 @@ def compute_volumes(data):
         print("No secondary ROI selected.")
 
 
-def draw_sphere_mask(mask, center_mm, radius_mm, spacing):
-    x_dim, y_dim, z_dim = mask.shape
-    z_spacing, y_spacing, x_spacing = spacing
+def draw_sphere_mask(mask, center_vox, radius_mm, spacing):
+    z_dim, y_dim, x_dim = mask.shape
+    x_spacing, y_spacing, z_spacing = spacing
+
+    # print("spacing =", spacing)
+    # print(
+    #     "x_spacing =", x_spacing,
+    #     "y_spacing =", y_spacing,
+    #     "z_spacing =", z_spacing
+    # )
+    # print(mask.shape)
 
     # Define voxel bounds around the sphere center
     radius_vox = [
@@ -411,25 +407,30 @@ def draw_sphere_mask(mask, center_mm, radius_mm, spacing):
         int(np.ceil(radius_mm / y_spacing)),
         int(np.ceil(radius_mm / z_spacing)),
     ]
+    # print(mask.shape)  # -> Z/Y/X
+    # print(spacing)  # -> X/Y/Z
+    # print(radius_mm)
+    # print(center_vox)  # -> Z/Y/X
+    # print(radius_vox)  # -> X/Y/Z
 
-    x0 = max(int(round(center_mm[0])) - radius_vox[0], 0)
-    x1 = min(int(round(center_mm[0])) + radius_vox[0] + 1, x_dim)
-    y0 = max(int(round(center_mm[1])) - radius_vox[1], 0)
-    y1 = min(int(round(center_mm[1])) + radius_vox[1] + 1, y_dim)
-    z0 = max(int(round(center_mm[2])) - radius_vox[2], 0)
-    z1 = min(int(round(center_mm[2])) + radius_vox[2] + 1, z_dim)
+    x0 = max(int(round(center_vox[2])) - radius_vox[0], 0)
+    x1 = min(int(round(center_vox[2])) + radius_vox[0] + 1, x_dim)
+    y0 = max(int(round(center_vox[1])) - radius_vox[1], 0)
+    y1 = min(int(round(center_vox[1])) + radius_vox[1] + 1, y_dim)
+    z0 = max(int(round(center_vox[0])) - radius_vox[2], 0)
+    z1 = min(int(round(center_vox[0])) + radius_vox[2] + 1, z_dim)
 
-    X, Y, Z = np.meshgrid(
-        np.arange(x0, x1), np.arange(y0, y1), np.arange(z0, z1), indexing="ij"
+    Z, Y, X = np.meshgrid(
+        np.arange(z0, z1), np.arange(y0, y1), np.arange(x0, x1), indexing="ij"
     )
 
     dist_vox = np.sqrt(
-        ((X - center_mm[0]) * x_spacing) ** 2
-        + ((Y - center_mm[1]) * y_spacing) ** 2
-        + ((Z - center_mm[2]) * z_spacing) ** 2
+        ((X - center_vox[2]) * x_spacing) ** 2
+        + ((Y - center_vox[1]) * y_spacing) ** 2
+        + ((Z - center_vox[0]) * z_spacing) ** 2
     )
 
-    mask[x0:x1, y0:y1, z0:z1][dist_vox <= radius_mm] = 1
+    mask[z0:z1, y0:y1, x0:x1][dist_vox <= radius_mm] = 1
 
 
 def convert_to_rtstruct(data):
@@ -476,8 +477,9 @@ def convert_to_rtstruct(data):
         [0, 192, 192],  # teal
         [192, 0, 192],  # violet
         [160, 82, 45],  # brown (useful for bone-like structures)
-        [220, 220, 220],  # light grey (PTV shells, margins)
-        [128, 128, 128],  # mid grey
+        [255, 255, 128],  # light lemon
+        [0, 255, 64],  # bright spring green
+        [255, 128, 255],  # bright lavender
     ]
 
     print("Data Loaded!")
@@ -517,8 +519,8 @@ def convert_to_rtstruct(data):
     print("CT slices:", len(ct_files))
 
     # Add your new ROIs
-    rtstruct_new.add_roi(mask=mask_bool_1, name="Cibles_Lattice", color=[255, 0, 0])
-    rtstruct_new.add_roi(mask=mask_bool_2, name="CiblesExt_Lattice", color=[0, 255, 0])
+    rtstruct_new.add_roi(mask=mask_bool_1, name="Cibles_Lattice", color=[255, 0, 0], approximate_contours=False)
+    rtstruct_new.add_roi(mask=mask_bool_2, name="CiblesExt_Lattice", color=[0, 255, 0], approximate_contours=False)
 
     print("Grid added!")
 
@@ -529,8 +531,13 @@ def convert_to_rtstruct(data):
     individual_sphere_structrues = "y"
 
     if individual_sphere_structrues == "y":
+        spheres_inside = np.asarray(spheres_inside)
+
+        if spheres_inside.ndim == 1:
+            spheres_inside = spheres_inside.reshape(1, 3)
+
         for i, (x, y, z) in enumerate(spheres_inside, start=1):
-            center_mm = np.array([float(x), float(y), float(z)])
+            center_mm = np.array([float(z), float(y), float(x)])
 
             # Build one mask just for this sphere
             mask = np.zeros_like(mask_array_1)
@@ -549,18 +556,34 @@ def convert_to_rtstruct(data):
             mask2 = np.zeros_like(mask_array_1)
             draw_sphere_mask(mask2, center_mm, sph_radius + 5, spacing)
 
+            single_mask_bool_2 = np.transpose(mask2.astype(bool), (1, 2, 0))
+
             # Pick color from palette (wrap around if more spheres than colors)
             color = colors[(i - 1) % len(colors)]
 
             # Add ROI with unique name
             rtstruct_new.add_roi(
-                mask=single_mask_bool, name=f"Sphere_Ext {i}", color=color
+                mask=single_mask_bool_2, name=f"Sphere_Ext {i}", color=color
             )
 
         print("Individual sphere structures saved!")
 
+        with open("timer.txt", "r") as f:
+            start = float(f.read())
+
+        end = time.time()
+
+        print(f"Time until filesave: {end - start:.2f} seconds")
+
     else:
         print("Not saving individual spheres")
+
+        with open("timer.txt", "r") as f:
+            start = float(f.read())
+
+        end = time.time()
+
+        print(f"Time until filesave: {end - start:.2f} seconds")
     return rtstruct_new
 
 
