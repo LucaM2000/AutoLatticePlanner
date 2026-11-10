@@ -70,11 +70,12 @@ jobs:
           wget http://creatis.insa-lyon.fr/~baudier/test_data_lattice_planner.zip
           unzip test_data_lattice_planner.zip
           rm test_data_lattice_planner.zip
-          auto-lattice-planner-cli -d test_data/ct/ -s test_data/rtstruct/2.16.840.1.114362.1.12289667.27500105949.700004238.985.109.dcm -l "Normal (Duriseti)" -p "gtv"
+          auto-lattice-planner-cli -d test_data/ct/ -s test_data/rtstruct/2.16.840.1.114362.1.12289667.27500105949.700004238.985.109.dcm -sd 2 -p "gtv"
           lattice-grid-target
           rtstruct-conversion-cli -s new_rtstruct.dcm
           expected="b7e1f94a5608fe2ff8b10b2507032e1f50ea82e1"
           sha_new_file=$(sha1sum "new_rtstruct.dcm" | awk '{print $1}')
+          echo $sha_new_file
           #if [[ "$sha_new_file" == "$expected" ]]; then
           #    echo "Test passed: SHA-1 hash matches expected value."
           #    exit 0

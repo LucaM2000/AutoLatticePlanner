@@ -32,11 +32,11 @@ CONTEXT_SETTINGS = dict(help_option_names=["-h", "--help"])
     default="gtv",
 )
 @click.option(
-    "--lattice_geometry",
-    "-l",
-    help="lattice geometry",
+    "--sphere_diameter",
+    "-sd",
+    help="diameter of the sphere in cm",
     required=True,
-    type=click.Choice(["Normal (Duriseti)", "product"]),
+    default=2,
 )
 @click.option(
     "--tolerance",
@@ -70,7 +70,6 @@ def main(
     dicom_series_path,
     rtstruct_path,
     primary_roi_name,
-    # lattice_geometry,
     sphere_diameter,
     tolerance,
     secondary_roi_name,
@@ -81,7 +80,6 @@ def main(
     dicom_series_path = os.path.normpath(dicom_series_path)
 
     primary_roi = primary_roi_name
-    lattice_geometry = lattice_geometry
     print(f"Primary ROI selected: {primary_roi}")
 
     secondary_roi = secondary_roi_name
@@ -101,8 +99,7 @@ def main(
         dicom_series_path=dicom_series_path,
         rtstruct_path=rtstruct_path,
         additional_target=additional_target,
-        # lattice_geometry=lattice_geometry,
-        sphere_diameter=sphere_diameter,
+        sphere_diameter=sphere_diameter/2.0*10,
         tolerance=tolerance,
         primary_roi=[primary_roi],
         secondary_roi=secondary_roi,
