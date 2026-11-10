@@ -21,7 +21,8 @@ class LatticeData:
         dicom_series_path=None,
         rtstruct_path=None,
         additional_target=False,
-        lattice_geometry=None,
+        # lattice_geometry=None,
+        sphere_diameter=None,
         tolerance=None,
         primary_roi=None,
         secondary_roi=None,
@@ -31,7 +32,8 @@ class LatticeData:
         self.dicom_series_path = dicom_series_path
         self.rtstruct_path = rtstruct_path
         self.additional_target = additional_target
-        self.lattice_geometry = lattice_geometry
+        # self.lattice_geometry = lattice_geometry
+        self.sphere_diameter = sphere_diameter
         self.tolerance = tolerance
         self.primary_roi = primary_roi
         self.secondary_roi = secondary_roi
@@ -43,7 +45,8 @@ class LatticeData:
             "dicom_series_path": self.dicom_series_path,
             "rtstruct_path": self.rtstruct_path,
             "additional_target": self.additional_target,
-            "lattice_geometry": self.lattice_geometry,
+            # "lattice_geometry": self.lattice_geometry,
+            "sphere_diameter": self.sphere_diameter,
             "tolerance": self.tolerance,
             "primary_roi": self.primary_roi,
             "secondary_roi": self.secondary_roi,
@@ -60,7 +63,8 @@ class LatticeData:
             dicom_series_path=data.get("dicom_series_path"),
             rtstruct_path=data.get("rtstruct_path"),
             additional_target=data.get("additional_target"),
-            lattice_geometry=data.get("lattice_geometry"),
+            # lattice_geometry=data.get("lattice_geometry"),
+            sphere_diameter=data.get("sphere_diameter"),
             tolerance=data.get("tolerance"),
             primary_roi=data.get("primary_roi"),
             secondary_roi=data.get("secondary_roi"),
@@ -436,16 +440,33 @@ def draw_sphere_mask(mask, center_vox, radius_mm, spacing):
 def convert_to_rtstruct(data):
     print("Loading data...")
 
-    lattice_geometry = data.lattice_geometry
+
     output = Path(data.output_folder)
 
-    if lattice_geometry == "Normal (Duriseti)":
-        sph_radius = 7.5
+    # lattice_geometry = data.lattice_geometry
+    # if lattice_geometry == "Normal (Duriseti)":
+    #     sph_radius = 7.5
+    #
+    # else:
+    #     sph_radius = 10
 
-    else:
-        sph_radius = 10
+    sphere_diameter = data.sphere_diameter
+    sph_radius = sphere_diameter / 2
+
+    # if sphere_diameter == 10:
+    #     sph_radius = 5
+    # elif sphere_diameter == 15:
+    #     sph_radius = 7.5
+    # elif sphere_diameter == 20:
+    #     sph_radius = 10
+    # elif sphere_diameter == 25:
+    #     sph_radius = 12.5
+    # elif sphere_diameter == 30:
+    #     sph_radius = 15
+
 
     spheres_inside = np.loadtxt(output / "spheres_inside.txt")
+    valleys_inside = np.loadtxt(output / "valleys_inside.txt")
 
     dicom_series_path = data.dicom_series_path
     rtstruct_path = data.rtstruct_path
@@ -453,8 +474,10 @@ def convert_to_rtstruct(data):
 
     mask_1 = itk.imread(output / "all_spheres_original_1.mhd")
     mask_2 = itk.imread(output / "all_spheres_expanded_1.mhd")
+    valley_mask = itk.imread(output / "all_valleys_original_1.mhd")
     mask_array_1 = itk.GetArrayFromImage(mask_1)  # Shape: [z, y, x]
     mask_array_2 = itk.GetArrayFromImage(mask_2)
+    valley_mask_array = itk.GetArrayFromImage(valley_mask)
     spacing = mask_1.GetSpacing()
 
     colors = [
@@ -511,16 +534,19 @@ def convert_to_rtstruct(data):
 
     mask_bool_1 = mask_array_1.astype(bool)
     mask_bool_2 = mask_array_2.astype(bool)
+    valleys_bool = valley_mask_array.astype(bool)
 
     mask_bool_1 = np.transpose(mask_bool_1, (1, 2, 0))
     mask_bool_2 = np.transpose(mask_bool_2, (1, 2, 0))
+    valleys_bool = np.transpose(valleys_bool, (1, 2, 0))
 
     print("Mask shape:", mask_bool_1.shape)
     print("CT slices:", len(ct_files))
 
     # Add your new ROIs
     rtstruct_new.add_roi(mask=mask_bool_1, name="Cibles_Lattice", color=[255, 0, 0], approximate_contours=False)
-    rtstruct_new.add_roi(mask=mask_bool_2, name="CiblesExt_Lattice", color=[0, 255, 0], approximate_contours=False)
+    # rtstruct_new.add_roi(mask=mask_bool_2, name="CiblesExt_Lattice", color=[0, 255, 0], approximate_contours=False)
+    rtstruct_new.add_roi(mask=valleys_bool, name="Valleys_Lattice", color=[0, 0, 255], approximate_contours=False )
 
     print("Grid added!")
 
@@ -553,18 +579,17 @@ def convert_to_rtstruct(data):
             rtstruct_new.add_roi(mask=single_mask_bool, name=f"Sphere {i}", color=color)
 
             # Build one mask just for this sphere
-            mask2 = np.zeros_like(mask_array_1)
-            draw_sphere_mask(mask2, center_mm, sph_radius + 5, spacing)
+            # mask2 = np.zeros_like(mask_array_1)
+            # draw_sphere_mask(mask2, center_mm, sph_radius + 5, spacing)
 
-            single_mask_bool_2 = np.transpose(mask2.astype(bool), (1, 2, 0))
+            # single_mask_bool_2 = np.transpose(mask2.astype(bool), (1, 2, 0))
 
             # Pick color from palette (wrap around if more spheres than colors)
-            color = colors[(i - 1) % len(colors)]
+            # color = colors[(i - 1) % len(colors)]
 
             # Add ROI with unique name
-            rtstruct_new.add_roi(
-                mask=single_mask_bool_2, name=f"Sphere_Ext {i}", color=color
-            )
+
+            # rtstruct_new.add_roi(mask=single_mask_bool_2, name=f"Sphere_Ext {i}", color=color)
 
         print("Individual sphere structures saved!")
 
