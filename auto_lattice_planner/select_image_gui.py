@@ -52,49 +52,71 @@ class ROIPicker(QWidget):
         self.setWindowTitle("Select Lattice Settings")
         self.resize(400, 600)
 
-        self.selected_roi = []
-        self.lattice_geometry = "Normal (Duriseti)"  # default
+        # self.selected_roi = []
+        # self.lattice_geometry = "Normal (Duriseti)"  # default
 
         self.rtstruct = pydicom.dcmread(rtstruct_path)
         self.roi_names = [roi.ROIName for roi in self.rtstruct.StructureSetROISequence]
 
         # --- Geometry selection ---
-        self.radio_label = QLabel("Select Lattice Geometry")
+        # self.radio_label = QLabel("Select Lattice Geometry")
 
-        self.radio1 = QRadioButton("Normal (Duriseti)")
-        self.radio2 = QRadioButton("Large (+33%)")
+        # self.radio1 = QRadioButton("Normal (Duriseti)")
+        # self.radio2 = QRadioButton("Large (+33%)")
+        #
+        # self.radio1.setChecked(True)
+        #
+        # self.radio_group = QButtonGroup(self)
+        # self.radio_group.addButton(self.radio1)
+        # self.radio_group.addButton(self.radio2)
+        #
+        # self.radio_group.buttonClicked.connect(self.radio_selected)
+        #
+        # radio_layout = QHBoxLayout()
+        # radio_layout.addWidget(self.radio1)
+        # radio_layout.addWidget(self.radio2)
 
-        self.radio1.setChecked(True)
-
-        self.radio_group = QButtonGroup(self)
-        self.radio_group.addButton(self.radio1)
-        self.radio_group.addButton(self.radio2)
-
-        self.radio_group.buttonClicked.connect(self.radio_selected)
-
-        radio_layout = QHBoxLayout()
-        radio_layout.addWidget(self.radio1)
-        radio_layout.addWidget(self.radio2)
-
-        # Tolerance Slider
-        self.slider_label = QLabel("Overlap Tolerance")
+        # Sphere Radius Slider
+        self.slider_label_1 = QLabel("Select Sphere Diameter")
         self.slider = QSlider(Qt.Horizontal)
 
-        self.slider.setMinimum(1)
-        self.slider.setMaximum(10)
-        self.slider.setValue(10)
+        self.slider.setMinimum(2)
+        self.slider.setMaximum(6)
+        self.slider.setValue(2)
         self.slider.setTickPosition(QSlider.TicksBelow)
         self.slider.setTickInterval(1)
         self.slider.valueChanged.connect(self.slider_value_changed)
 
-        slider_layout = QVBoxLayout()
-        slider_layout.addWidget(QLabel("Set tolerance (1.0 = full sphere inside volume, 0.1 = 10% inside)"))
-        slider_layout.addWidget(self.slider_label)
-        slider_layout.addWidget(self.slider)
+        slider_layout_1 = QVBoxLayout()
+        slider_layout_1.addWidget(QLabel("Set Diameter (1 - 3 cm)"))
+        slider_layout_1.addWidget(self.slider_label_1)
+        slider_layout_1.addWidget(self.slider)
 
         self.slider_label_2 = QLabel("1")
 
         self.slider_value_changed(self.slider.value())
+
+
+
+        # Tolerance Slider
+        self.slider_label_2 = QLabel("Overlap Tolerance")
+        self.slider2 = QSlider(Qt.Horizontal)
+
+        self.slider2.setMinimum(1)
+        self.slider2.setMaximum(10)
+        self.slider2.setValue(10)
+        self.slider2.setTickPosition(QSlider.TicksBelow)
+        self.slider2.setTickInterval(1)
+        self.slider2.valueChanged.connect(self.slider_value_changed_2)
+
+        slider_layout_2 = QVBoxLayout()
+        slider_layout_2.addWidget(QLabel("Set tolerance (1.0 = full sphere inside volume, 0.1 = 10% inside)"))
+        slider_layout_2.addWidget(self.slider_label_2)
+        slider_layout_2.addWidget(self.slider2)
+
+        self.slider_label_3 = QLabel("1")
+
+        self.slider_value_changed_2(self.slider2.value())
 
         # --- ROI list ---
         self.label = QLabel("Select ROI from the list:")
@@ -115,26 +137,33 @@ class ROIPicker(QWidget):
 
         # --- Main layout ---
         layout = QVBoxLayout()
-        layout.addWidget(self.radio_label)
-        layout.addLayout(radio_layout)
-        layout.addWidget(self.slider_label)
-        layout.addLayout(slider_layout)
+        # layout.addWidget(self.radio_label)
+        # layout.addLayout(radio_layout)
+        layout.addWidget(self.slider_label_1)
+        layout.addLayout(slider_layout_1)
         layout.addWidget(self.slider_label_2)
+        layout.addLayout(slider_layout_2)
         layout.addWidget(self.label)
         layout.addWidget(self.list_widget)
         layout.addLayout(button_layout)
 
         self.setLayout(layout)
 
-    def radio_selected(self, button):
-        self.lattice_geometry = button.text()
-        print(f"Geometry Size: {self.lattice_geometry}")
+    # def radio_selected(self, button):
+    #     self.lattice_geometry = button.text()
+    #     print(f"Geometry Size: {self.lattice_geometry}")
 
     def slider_value_changed(self, value):
-        scale = 10
+        scale = 2
         self.slider_label_2.setText("{}".format(value / scale))
 
-        self.tolerance_value = value / scale
+        self.sphere_diameter = (value / scale) * 10
+
+    def slider_value_changed_2(self, value):
+            scale = 10
+            self.slider_label_2.setText("{}".format(value / scale))
+
+            self.tolerance_value = value / scale
 
     def confirm_selection(self):
         selected_items = self.list_widget.selectedItems()
@@ -381,7 +410,8 @@ def main():
         sys.exit(0)
 
     primary_roi = picker.selected_roi
-    lattice_geometry = picker.lattice_geometry
+    # lattice_geometry = picker.lattice_geometry
+    sphere_diameter = picker.sphere_diameter
     tolerance = picker.tolerance_value
     print(f"Primary ROI selected: {primary_roi}")
 
@@ -404,7 +434,8 @@ def main():
         dicom_series_path=dicom_series_path,
         rtstruct_path=rtstruct_path,
         additional_target=additional_target,
-        lattice_geometry=lattice_geometry,
+        # lattice_geometry=lattice_geometry,
+        sphere_diameter=sphere_diameter,
         tolerance=tolerance,
         primary_roi=primary_roi,
         secondary_roi=secondary_roi,

@@ -41,24 +41,50 @@ def compute_lattice_grid_target(output):
     ct_image = gt.read_dicom(ct_files)
     additional_target = data.additional_target
 
-    lattice_geometry = data.lattice_geometry
+    # lattice_geometry = data.lattice_geometry
     tolerance = data.tolerance
+    sphere_diameter = data.sphere_diameter
 
-    if lattice_geometry == "Normal (Duriseti)":
-        sph_radius = 7.5
-        x_sph_spacing = 60
-        y_sph_spacing = 30
-        z_sph_spacing = 30
+    sph_radius = sphere_diameter / 2
 
-    else:
-        sph_radius = 10
-        x_sph_spacing = 80
-        y_sph_spacing = 40
-        z_sph_spacing = 40
+    x_sph_spacing = 4 * sphere_diameter
+    y_sph_spacing = 2 * sphere_diameter
+    z_sph_spacing = 2 * sphere_diameter
+
+    # if sphere_diameter == 10:
+    #     sph_radius = 5
+    #     x_sph_spacing = 40
+    #     y_sph_spacing = 20
+    #     z_sph_spacing = 20
+    #
+    # elif sphere_diameter == 15:
+    #     sph_radius = 7.5
+    #     x_sph_spacing = 60
+    #     y_sph_spacing = 30
+    #     z_sph_spacing = 30
+    #
+    # elif sphere_diameter == 20:
+    #     sph_radius = 10
+    #     x_sph_spacing = 80
+    #     y_sph_spacing = 40
+    #     z_sph_spacing = 40
+    #
+    # elif sphere_diameter == 25:
+    #     sph_radius = 12.5
+    #     x_sph_spacing = 100
+    #     y_sph_spacing = 50
+    #     z_sph_spacing = 50
+    #
+    # elif sphere_diameter == 30:
+    #     sph_radius = 15
+    #     x_sph_spacing = 120
+    #     y_sph_spacing = 60
+    #     z_sph_spacing = 60
 
     print(
         "geometry selection test:",
-        lattice_geometry,
+        # lattice_geometry,
+        sphere_diameter,
         x_sph_spacing,
         y_sph_spacing,
         z_sph_spacing,
@@ -334,11 +360,20 @@ def compute_lattice_grid_target(output):
     gridx = []
     gridy = []
     gridz = []
+
+    gridx1 = []
+    gridy1 = []
+    gridz1 = []
+
     colors = []
 
     xno = int(np.round(xgrid / x_sph_spacing))
     yno = int(np.round(ygrid / y_sph_spacing))
     zno = int(np.round(zgrid / z_sph_spacing))
+
+    valley_x_offset = x_sph_spacing / 4
+    valley_y_offset = y_sph_spacing / 2
+    valley_x_shift = x_sph_spacing / 2
 
     for i in range(zno + 1):  # z layers
         for u in range(yno + 1):  # y rows
@@ -348,13 +383,31 @@ def compute_lattice_grid_target(output):
                 gy = u * y_sph_spacing
                 gz = i * z_sph_spacing
 
+                gx1 = r * x_sph_spacing / 2 + valley_x_offset
+                gy1 = u * y_sph_spacing + valley_y_offset
+                gz1 = i * z_sph_spacing
+
+                gx2 = r * x_sph_spacing - valley_x_shift
+                gy2 = u * y_sph_spacing
+                gz2 = i * z_sph_spacing
+
+                # gx3 = r * x_sph_spacing
+                # gy3 = u * y_sph_spacing - y_sph_spacing
+                # gz3 = i * z_sph_spacing
+
                 # Offset every second row in y (to form 2D hex pattern)
                 if u % 2 == 1:
                     gx += x_sph_spacing / 2
+                    gx1 += x_sph_spacing / 2
+                    gx2 += x_sph_spacing / 2
+                    gx3 += x_sph_spacing / 2
 
                 # Offset every second z-layer
                 if i % 2 == 1:
                     gy += y_sph_spacing
+                    gy1 += y_sph_spacing
+                    gy2 += y_sph_spacing
+                    gy3 += y_sph_spacing
 
                 # Append only if within bounds
                 if gx <= xgrid and gy <= ygrid and gz <= zgrid:
@@ -362,26 +415,53 @@ def compute_lattice_grid_target(output):
                     gridy.append(gy)
                     gridz.append(gz)
 
+                if gx1 <= xgrid and gy1 <= ygrid and gz1 <= zgrid:
+                    gridx1.append(gx1)
+                    gridy1.append(gy1)
+                    gridz1.append(gz1)
+
+                if gx2 <= xgrid and gy2 <= ygrid and gz2 <= zgrid:
+                    gridx1.append(gx2)
+                    gridy1.append(gy2)
+                    gridz1.append(gz2)
+
+                # if gx3 <= xgrid and gy3 <= ygrid and gz3 <= zgrid:
+                #     gridx1.append(gx3)
+                #     gridy1.append(gy3)
+                #     gridz1.append(gz3)
+
                     grid_color = "b" if (r + u + i) % 2 == 0 else "r"
                     colors.append(grid_color)
 
     # Create full 3D grid
     all_grid_points = np.array(list(zip(gridx, gridy, gridz)))
+    all_valley_points = np.array(list(zip(gridx1, gridy1, gridz1)))
+
+    print("Grid centre:", np.mean(all_grid_points, axis=0))
+    print("Valley centre:", np.mean(all_valley_points, axis=0))
 
     # Center it
     grid_points = all_grid_points - np.mean(all_grid_points, axis=0)
+    valley_points = all_valley_points - np.mean(all_grid_points, axis=0)
 
     # Store in Nx4 array with dummy 4th column
     grid_points1 = np.zeros((len(grid_points), 4))
     grid_points1[:, :3] = grid_points
 
+    valley_points1 = np.zeros((len(valley_points), 4))
+    valley_points1[:, :3] = valley_points
+
     # Optional: assign dummy value or use color index later
-    grid_points1[:, 3] = [0 if c == "b" else 1 for c in colors]
+    # grid_points1[:, 3] = [0 if c == "b" else 1 for c in colors]
+    # valley_points1[:, 3] = [0 if c == "b" else 1 for c in colors]
+
+
 
     # Check
     print(np.shape(grid_points1))
+    print(np.shape(valley_points1))
     print("Center of grid (should be ~0):", np.mean(grid_points1[:, :3], axis=0))
-
+    print("Center of valleys grid (should be ~0):", np.mean(valley_points1[:, :3], axis=0))
     print("Grid generated!")
 
 
@@ -399,6 +479,7 @@ def compute_lattice_grid_target(output):
     mask_files = sorted(mask_folder.glob("Lattice_target_*.mhd"))
 
     spheres_inside_array = []
+    valleys_inside_array = []
 
     for mask_file in mask_files:
         roi_id = mask_file.stem.replace("Lattice_target_", "")
@@ -419,9 +500,11 @@ def compute_lattice_grid_target(output):
         centroid = (centroid_x, centroid_y, centroid_z)
 
         centred_points = grid_points1[:, :3] + centroid
+        centred_valley_points = valley_points1[:, :3] + centroid
 
         colors = grid_points1[:, 3].reshape(-1, 1)
         centred_grid = np.hstack([centred_points, colors])
+        centred_valley = centred_valley_points
 
         # print("Rotating grid...")
         #
@@ -474,6 +557,8 @@ def compute_lattice_grid_target(output):
 
         print("Spheres inside based on rotation & translation:", len(best_inside_tumour_RT))
 
+
+
         if additional_target is True:
             print("Spheres target coverage based on rotation & translation:",len(best_inside_targets_RT))
 
@@ -490,9 +575,24 @@ def compute_lattice_grid_target(output):
         chosen_method = "Translation + Rotation"
         spheres_inside = np.array(best_inside_tumour_RT)
         spheres_inside_array.append(spheres_inside)
-    
-    
+
         print("Grid optimised!", f"Chosen method: {chosen_method}.", "Total spheres=", len(spheres_inside))
+
+        print('Orienting valley grid...')
+
+        valley_points_final = (
+                rotate_grid(centred_valley, best_orientation, centroid)
+                + np.array(best_translation)
+        )
+
+        valley_voxel = valley_points_final / spacing
+        valley_mask = batch_check_spheres_inside(valley_voxel, radius=5, distance_map=distance_map, tolerance=tolerance)
+
+        valleys_inside = valley_voxel[valley_mask]
+        valleys_inside_array.append(valleys_inside)
+
+        print('Valleys inside:', len(valleys_inside))
+
     
         # if best_fitness_rotation > best_fitness_rotation_translation:
         #     best_fitness = len(best_inside_rotation)
@@ -506,7 +606,13 @@ def compute_lattice_grid_target(output):
     mask_array_2 = np.zeros(ct_shape, dtype=np.uint8)
 
     spheres_inside_array = np.vstack(spheres_inside_array)  # X/Y/Z
+    valleys_inside_array = np.vstack(valleys_inside_array)
     # print(len(spheres_inside_array))
+
+
+
+
+
 
     def save_individual_sphere_masks(
         spheres, radius, spacing, origin, direction, mask_shape, prefix="Sphere"
@@ -532,11 +638,16 @@ def compute_lattice_grid_target(output):
             mask_array_1, center_vox, sph_radius, spacing
         )
 
-    for i, (x, y, z) in enumerate(spheres_inside_array):
+    for i, (x, y, z) in enumerate(valleys_inside_array):
         center_vox = np.array([float(z), float(y), float(x)])
         lattice_planner_helper.draw_sphere_mask(
-            mask_array_2, center_vox, sph_radius + 5, spacing
-        )
+            mask_array_1, center_vox, radius_mm=5, spacing=spacing)
+
+    # for i, (x, y, z) in enumerate(spheres_inside_array):
+    #     center_vox = np.array([float(z), float(y), float(x)])
+    #     lattice_planner_helper.draw_sphere_mask(
+    #         mask_array_2, center_vox, sph_radius + 5, spacing
+    #     )
 
     # Convert to ITK and save both
     def save_mask_as_mhd(mask_array, filename, spacing, origin, direction):
@@ -546,14 +657,14 @@ def compute_lattice_grid_target(output):
         itk_image.SetDirection(direction)
         itk.imwrite(itk_image, filename)
 
-    save_mask_as_mhd(
-        mask_array_1, "all_spheres_original_1.mhd", spacing, origin, direction
-    )
-    save_mask_as_mhd(
-        mask_array_2, "all_spheres_expanded_1.mhd", spacing, origin, direction
-    )
+    save_mask_as_mhd(mask_array_1, "all_spheres_original_1.mhd", spacing, origin, direction)
+
+    save_mask_as_mhd(mask_array_1, "all_valleys_original_1.mhd", spacing, origin, direction)
+
+    # save_mask_as_mhd(mask_array_2, "all_spheres_expanded_1.mhd", spacing, origin, direction)
 
     np.savetxt(output_folder / "spheres_inside.txt", spheres_inside_array)
+    np.savetxt(output_folder / "valleys_inside.txt", valleys_inside_array)
 
     print("Masks saved!")
 
